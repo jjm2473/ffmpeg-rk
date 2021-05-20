@@ -309,6 +309,11 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
         avctx->width = mpp_frame_get_width(mppframe);
         avctx->height = mpp_frame_get_height(mppframe);
 
+        // chromium would align planes' width and height to 32, adding this
+        // hack to avoid breaking the plane buffers' contiguous.
+        avctx->coded_width = FFALIGN(avctx->width, 64);
+        avctx->coded_height = FFALIGN(avctx->height, 64);
+
         decoder->mpi->control(decoder->ctx, MPP_DEC_SET_FRAME_INFO, (MppParam) mppframe);
         decoder->mpi->control(decoder->ctx, MPP_DEC_SET_INFO_CHANGE_READY, NULL);
 
