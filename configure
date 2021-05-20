@@ -317,6 +317,7 @@ External library support:
   --enable-omx             enable OpenMAX IL code [no]
   --enable-omx-rpi         enable OpenMAX IL code for Raspberry Pi [no]
   --enable-rkmpp           enable Rockchip Media Process Platform code [no]
+  --enable-librga          enable Rockchip RGA 2D accel via librga [autodetect]
   --disable-vaapi          disable Video Acceleration API (mainly Unix/Intel) code [autodetect]
   --disable-vda            disable Apple Video Decode Acceleration code [autodetect]
   --disable-vdpau          disable Nvidia Video Decode and Presentation API for Unix code [autodetect]
@@ -1654,6 +1655,7 @@ HWACCEL_AUTODETECT_LIBRARY_LIST="
     videotoolbox
     v4l2_m2m
     xvmc
+    librga
 "
 
 HWACCEL_LIBRARY_NONFREE_LIST="
@@ -6078,10 +6080,13 @@ enabled openssl           && { use_pkg_config openssl openssl openssl/ssl.h OPEN
                                check_lib openssl openssl/ssl.h SSL_library_init -lssl32 -leay32 ||
                                check_lib openssl openssl/ssl.h SSL_library_init -lssl -lcrypto -lws2_32 -lgdi32 ||
                                die "ERROR: openssl not found"; }
+enabled librga            && require librga rga/RgaApi.h c_RkRgaInit -lrga && prepend rkmpp_deps "librga"
 enabled rkmpp             && { { require_pkg_config rockchip_mpp rockchip_mpp rockchip/rk_mpi.h mpp_create ||
                                  die "ERROR : Rockchip MPP was not found."; } &&
                                { enabled libdrm ||
-                                 die "ERROR: rkmpp requires --enable-libdrm"; }
+                                 die "ERROR: rkmpp requires --enable-libdrm"; } &&
+                               { enabled librga ||
+                                 warn "using rkmpp without librga"; }
                              }
 
 if enabled gcrypt; then
