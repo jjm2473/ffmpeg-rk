@@ -68,6 +68,10 @@
  * Codec initializes slice-based threading with a main function
  */
 #define FF_CODEC_CAP_SLICE_THREAD_HAS_MF    (1 << 5)
+/**
+ * The decoder requires contiguous buffers.
+ */
+#define FF_CODEC_CAP_CONTIGUOUS_BUFFERS     (1 << 31)
 
 #ifdef TRACE
 #   define ff_tlog(ctx, ...) av_log(ctx, AV_LOG_TRACE, __VA_ARGS__)
