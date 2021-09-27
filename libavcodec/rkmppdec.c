@@ -497,20 +497,16 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
 
     rkmpp_update_fps(avctx);
 
-    // setup general frame fields
-    frame->format           = avctx->pix_fmt;
-    frame->width            = mpp_frame_get_width(mppframe);
-    frame->height           = mpp_frame_get_height(mppframe);
-
     if (avctx->pix_fmt != AV_PIX_FMT_DRM_PRIME) {
         ret = ff_get_buffer(avctx, frame, 0);
         if (ret < 0)
             goto out;
-
-        ret = rkmpp_convert_frame(avctx, frame, mppframe, buffer);
-        goto out;
     }
 
+    // setup general frame fields
+    frame->format           = avctx->pix_fmt;
+    frame->width            = mpp_frame_get_width(mppframe);
+    frame->height           = mpp_frame_get_height(mppframe);
     frame->pts              = mpp_frame_get_pts(mppframe);
 #if FF_API_PKT_PTS
     FF_DISABLE_DEPRECATION_WARNINGS;
@@ -526,6 +522,11 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
     mode = mpp_frame_get_mode(mppframe);
     frame->interlaced_frame = ((mode & MPP_FRAME_FLAG_FIELD_ORDER_MASK) == MPP_FRAME_FLAG_DEINTERLACED);
     frame->top_field_first  = ((mode & MPP_FRAME_FLAG_FIELD_ORDER_MASK) == MPP_FRAME_FLAG_TOP_FIRST);
+
+    if (avctx->pix_fmt != AV_PIX_FMT_DRM_PRIME) {
+        ret = rkmpp_convert_frame(avctx, frame, mppframe, buffer);
+        goto out;
+    }
 
     mppformat = mpp_frame_get_fmt(mppframe);
     drmformat = rkmpp_get_frameformat(mppformat);
@@ -751,6 +752,7 @@ static const AVCodecHWConfigInternal *const rkmpp_hw_configs[] = {
         .flush          = rkmpp_flush, \
         .priv_class     = &rkmpp_##NAME##_dec_class, \
         .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
+        .caps_internal  = FF_CODEC_CAP_CONTIGUOUS_BUFFERS, \
         .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_DRM_PRIME, \
                                                          AV_PIX_FMT_YUV420P, \
                                                          AV_PIX_FMT_NONE}, \
