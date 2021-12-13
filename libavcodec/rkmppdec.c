@@ -44,6 +44,10 @@
 #include <rga/RgaApi.h>
 #endif
 
+#ifndef DRM_FORMAT_NV12_10
+#define DRM_FORMAT_NV12_10 fourcc_code('N', 'A', '1', '2')
+#endif
+
 #define FPS_UPDATE_INTERVAL     120
 
 typedef struct {
@@ -89,9 +93,7 @@ static uint32_t rkmpp_get_frameformat(MppFrameFormat mppformat)
 {
     switch (mppformat) {
     case MPP_FMT_YUV420SP:          return DRM_FORMAT_NV12;
-#ifdef DRM_FORMAT_NV12_10
     case MPP_FMT_YUV420SP_10BIT:    return DRM_FORMAT_NV12_10;
-#endif
     default:                        return 0;
     }
 }
