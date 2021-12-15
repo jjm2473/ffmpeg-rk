@@ -94,6 +94,17 @@ static uint32_t rkmpp_get_frameformat(MppFrameFormat mppformat)
     switch (mppformat) {
     case MPP_FMT_YUV420SP:          return DRM_FORMAT_NV12;
     case MPP_FMT_YUV420SP_10BIT:    return DRM_FORMAT_NV12_10;
+    case MPP_FMT_YUV422SP:          return DRM_FORMAT_NV16;
+    default:                        return 0;
+    }
+}
+
+static uint32_t rkmpp_get_avformat(MppFrameFormat mppformat)
+{
+    switch (mppformat) {
+    case MPP_FMT_YUV420SP:          return AV_PIX_FMT_NV12;
+    case MPP_FMT_YUV420SP_10BIT:    return AV_PIX_FMT_NONE;
+    case MPP_FMT_YUV422SP:          return AV_PIX_FMT_NV16;
     default:                        return 0;
     }
 }
@@ -103,6 +114,7 @@ static uint32_t rkmpp_get_rgaformat(MppFrameFormat mppformat)
     switch (mppformat) {
     case MPP_FMT_YUV420SP:          return RK_FORMAT_YCbCr_420_SP;
     case MPP_FMT_YUV420SP_10BIT:    return RK_FORMAT_YCbCr_420_SP_10B;
+    case MPP_FMT_YUV422SP:          return RK_FORMAT_YCbCr_422_SP;
     default:                        return RK_FORMAT_UNKNOWN;
     }
 }
@@ -472,11 +484,10 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
         }
 
         mppformat = mpp_frame_get_fmt(mppframe);
-        drmformat = rkmpp_get_frameformat(mppformat);
 
         hwframes = (AVHWFramesContext*)decoder->frames_ref->data;
         hwframes->format    = AV_PIX_FMT_DRM_PRIME;
-        hwframes->sw_format = drmformat == DRM_FORMAT_NV12 ? AV_PIX_FMT_NV12 : AV_PIX_FMT_NONE;
+        hwframes->sw_format = rkmpp_get_avformat(mppformat);
         hwframes->width     = avctx->width;
         hwframes->height    = avctx->height;
         ret = av_hwframe_ctx_init(decoder->frames_ref);
