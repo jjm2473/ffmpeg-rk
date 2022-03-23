@@ -66,6 +66,8 @@ typedef struct {
 
     uint64_t last_fps_time;
     uint64_t frames;
+
+    char sync;
 } RKMPPDecoder;
 
 typedef struct {
@@ -167,6 +169,13 @@ static int rkmpp_prepare_decoder(AVCodecContext *avctx)
         mpp_packet_deinit(&packet);
         if (ret < 0)
             return AVERROR_UNKNOWN;
+    }
+
+    if (getenv("FFMPEG_RKMPP_SYNC")) {
+        // wait for decode result after feeding any packets
+        decoder->sync = 1;
+        ret = 1;
+        decoder->mpi->control(decoder->ctx, MPP_DEC_SET_IMMEDIATE_OUT, &ret);
     }
     return 0;
 }
@@ -716,6 +725,10 @@ static int rkmpp_receive_frame(AVCodecContext *avctx, AVFrame *frame)
             } else {
                 av_packet_unref(packet);
                 packet->size = 0;
+
+                // blocked waiting for decode result
+                if (decoder->sync)
+                    return rkmpp_get_frame(avctx, frame, MPP_TIMEOUT_BLOCK);
             }
         }
     }
