@@ -210,6 +210,7 @@ static void register_all(void)
     REGISTER_DECODER(H263I,             h263i);
     REGISTER_ENCDEC (H263P,             h263p);
     REGISTER_DECODER(H263_V4L2M2M,      h263_v4l2m2m);
+    REGISTER_DECODER(H263_RKMPP,        h263_rkmpp);
     REGISTER_DECODER(H264,              h264);
     REGISTER_DECODER(H264_CRYSTALHD,    h264_crystalhd);
     REGISTER_DECODER(H264_V4L2M2M,      h264_v4l2m2m);
@@ -693,12 +694,15 @@ static void register_all(void)
     REGISTER_DECODER(MJPEG_CUVID,       mjpeg_cuvid);
     REGISTER_ENCODER(MJPEG_VAAPI,       mjpeg_vaapi);
     REGISTER_DECODER(MPEG1_CUVID,       mpeg1_cuvid);
+    REGISTER_ENCODER(MPEG1_RKMPP,       mpeg1_rkmpp);
     REGISTER_DECODER(MPEG2_CUVID,       mpeg2_cuvid);
     REGISTER_ENCODER(MPEG2_QSV,         mpeg2_qsv);
     REGISTER_ENCODER(MPEG2_VAAPI,       mpeg2_vaapi);
+    REGISTER_ENCODER(MPEG2_RKMPP,       mpeg2_rkmpp);
     REGISTER_DECODER(MPEG4_CUVID,       mpeg4_cuvid);
     REGISTER_DECODER(MPEG4_MEDIACODEC,  mpeg4_mediacodec);
     REGISTER_ENCODER(MPEG4_V4L2M2M,     mpeg4_v4l2m2m);
+    REGISTER_ENCODER(MPEG4_RKMPP,       mpeg4_rkmpp);
     REGISTER_DECODER(VC1_CUVID,         vc1_cuvid);
     REGISTER_DECODER(VP8_CUVID,         vp8_cuvid);
     REGISTER_DECODER(VP8_MEDIACODEC,    vp8_mediacodec);
