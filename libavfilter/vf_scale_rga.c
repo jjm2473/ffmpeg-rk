@@ -57,12 +57,11 @@ typedef struct ScaleRGAContext {
     AVBufferRef *device_ref;
     AVBufferRef *hwframes_ref;
     rga_rect_t output;
+    int passthrough;
 
     MppBufferGroup frame_group;
 
     AVFrame *sw_frame;
-
-    int   mode;
 
     char *w_expr;      // width expression string
     char *h_expr;      // height expression string
@@ -124,7 +123,7 @@ static int ff_rga_vpp_config_output(AVFilterLink *outlink)
     output_frames = (AVHWFramesContext*)ctx->hwframes_ref->data;
 
     output_frames->format    = AV_PIX_FMT_DRM_PRIME;
-    output_frames->sw_format = inlink->hw_frames_ctx?((AVHWFramesContext*)inlink->hw_frames_ctx->data)->sw_format:inlink->format;
+    output_frames->sw_format = AV_PIX_FMT_NV12;
     output_frames->width     = rect->width;
     output_frames->height    = rect->height;
 
@@ -243,15 +242,18 @@ static int scale_rga_config_output(AVFilterLink *outlink)
 
     av_buffer_unref(&ctx->hwframes_ref);
 
-    if (inlink->hw_frames_ctx && outlink->w == inlink->w && outlink->h == inlink->h) {
+    ctx->passthrough = 0;
+    if (inlink->hw_frames_ctx && outlink->w == inlink->w && outlink->h == inlink->h &&
+            ((AVHWFramesContext*)inlink->hw_frames_ctx->data)->sw_format == AV_PIX_FMT_NV12) {
         av_log(ctx, AV_LOG_VERBOSE, "Passthrough frames.\n");
+        ctx->passthrough = 1;
         outlink->hw_frames_ctx = av_buffer_ref(inlink->hw_frames_ctx);
         if (!outlink->hw_frames_ctx)
             return AVERROR(ENOMEM);
     } else if ((err = ff_rga_vpp_config_output(outlink)) < 0) {
         return err;
     }
-    rect->format = ff_null_get_rgaformat(((AVHWFramesContext*)outlink->hw_frames_ctx->data)->sw_format);
+    rect->format = ff_null_get_rgaformat(AV_PIX_FMT_NV12);
     rect->size = rect->wstride * rect->hstride * get_bpp_from_rga_format(rect->format);
 
     if (inlink->sample_aspect_ratio.num)
@@ -300,7 +302,7 @@ static int scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame)
     rga_info_t src_info = {0};
     rga_info_t dst_info = {0};
 
-    if (inlink->hw_frames_ctx && outlink->w == inlink->w && outlink->h == inlink->h) {
+    if (ctx->passthrough) {
         return ff_filter_frame(outlink, input_frame);
     }
 
