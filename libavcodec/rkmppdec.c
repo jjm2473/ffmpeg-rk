@@ -229,6 +229,13 @@ static int rkmpp_init_decoder(AVCodecContext *avctx)
         goto fail;
     }
 
+    if (AV_CODEC_ID_H264 == avctx->codec_id 
+            && FF_PROFILE_H264_HIGH_10 == (avctx->profile & ~FF_PROFILE_H264_INTRA)) {
+        av_log(avctx, AV_LOG_ERROR, "H264 Hi10P unsupported by MPP\n");
+        ret = AVERROR(ENOTSUP);
+        goto fail;
+    }
+
     // Create the MPP context
     ret = mpp_create(&decoder->ctx, &decoder->mpi);
     if (ret != MPP_OK) {
