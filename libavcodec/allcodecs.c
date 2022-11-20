@@ -928,6 +928,16 @@ const AVCodec *avcodec_find_decoder(enum AVCodecID id)
     return find_codec(id, av_codec_is_decoder);
 }
 
+static int av_codec_is_sw_decoder(const AVCodec *codec)
+{
+    return codec && (codec->decode || codec->receive_frame) && !(codec->capabilities & AV_CODEC_CAP_HARDWARE);
+}
+
+const AVCodec *avcodec_find_sw_decoder(enum AVCodecID id)
+{
+    return find_codec(id, av_codec_is_sw_decoder);
+}
+
 static const AVCodec *find_codec_by_name(const char *name, int (*x)(const AVCodec *))
 {
     void *i = 0;

@@ -376,6 +376,14 @@ const AVCodec *av_codec_iterate(void **opaque);
 const AVCodec *avcodec_find_decoder(enum AVCodecID id);
 
 /**
+ * Find a registered software decoder with a matching codec ID.
+ *
+ * @param id AVCodecID of the requested decoder
+ * @return A decoder if one was found, NULL otherwise.
+ */
+const AVCodec *avcodec_find_sw_decoder(enum AVCodecID id);
+
+/**
  * Find a registered decoder with the specified name.
  *
  * @param name name of the requested decoder

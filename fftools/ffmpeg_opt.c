@@ -800,6 +800,14 @@ static const AVCodec *choose_decoder(OptionsContext *o, AVFormatContext *s, AVSt
         if (recast_media && st->codecpar->codec_type != codec->type)
             st->codecpar->codec_type = codec->type;
         return codec;
+    } else if (AVMEDIA_TYPE_VIDEO == st->codecpar->codec_type &&
+            AV_CODEC_ID_H264 == st->codecpar->codec_id &&
+            FF_PROFILE_H264_HIGH_10 == (st->codecpar->profile & ~FF_PROFILE_H264_INTRA)) {
+        /*
+         * H264 High10 profile is not supported by most GPU
+         * https://jellyfin.org/docs/general/administration/hardware-acceleration/#h264--avc-10-bit-videos
+         */
+        return avcodec_find_sw_decoder(st->codecpar->codec_id);
     } else
         return avcodec_find_decoder(st->codecpar->codec_id);
 }
