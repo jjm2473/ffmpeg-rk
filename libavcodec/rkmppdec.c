@@ -727,8 +727,10 @@ static int rkmpp_receive_frame(AVCodecContext *avctx, AVFrame *frame)
             // send pending data to decoder
             ret = rkmpp_send_packet(avctx, packet);
             if (ret == AVERROR(EAGAIN)) {
-                // blocked polling since we got enough data
-                return rkmpp_get_frame(avctx, frame, MPP_TIMEOUT_BLOCK);
+                // some streams might need more packets to start returning frames
+                ret = rkmpp_get_frame(avctx, frame, 1);
+                if (ret != AVERROR(EAGAIN))
+                    return ret;
             } else if (ret < 0) {
                 av_log(avctx, AV_LOG_ERROR, "Failed to send data (code = %d)\n", ret);
                 return ret;
