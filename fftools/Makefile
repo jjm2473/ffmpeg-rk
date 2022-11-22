@@ -51,9 +51,9 @@ endif
 install-progs-yes:
 install-progs-$(CONFIG_SHARED): install-libs
 
-install-progs: install-progs-yes $(AVPROGS)
+install-progs: install-progs-yes $(AVPROGS) $(WRAPPROGS)
 	$(Q)mkdir -p "$(BINDIR)"
-	$(INSTALL) -c -m 755 $(AVPROGS) "$(BINDIR)"
+	$(INSTALL) -c -m 755 $(AVPROGS) $(WRAPPROGS) "$(BINDIR)"
 
 uninstall: uninstall-progs
 
