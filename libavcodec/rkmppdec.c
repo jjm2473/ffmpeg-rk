@@ -728,7 +728,7 @@ static int rkmpp_receive_frame(AVCodecContext *avctx, AVFrame *frame)
             ret = rkmpp_send_packet(avctx, packet);
             if (ret == AVERROR(EAGAIN)) {
                 // some streams might need more packets to start returning frames
-                ret = rkmpp_get_frame(avctx, frame, 1);
+                ret = rkmpp_get_frame(avctx, frame, 5);
                 if (ret != AVERROR(EAGAIN))
                     return ret;
             } else if (ret < 0) {
