@@ -90,22 +90,20 @@ static int conv(const char **arg) {
     if (!strcmp("-vf", *arg) || !strcmp("-filter_complex", *arg)) {
 #if CONFIG_SCALE_RGA_FILTER
         if (!strcmp("-vf", *arg)) {
-            if (!strncmp("scale=trunc(", arg[1], 12)) {
-                p = arg[1];
-            }
             if (strstr(arg[1], "tonemap=")) {
                 tonemap = 1;
             }
             if (strstr(arg[1], "thumbnail=")) {
                 thumbnail = 1;
             }
-        } else {
-            p = strstr(arg[1], "scale=trunc(");
         }
+        p = strstr(arg[1], "scale=trunc(");
 
         if (p) {
             if (1 != sscanf(p, "scale=trunc(min(max(iw\\,ih*dar)\\,%d)/2)*2:trunc(ow/dar/2)*2", &w) &&
                 1 != sscanf(p, "scale=trunc(min(max(iw,ih*dar),%d)/2)*2:trunc(ow/dar/2)*2", &w) &&
+                1 != sscanf(p, "scale=trunc(min(max(iw\\,ih*a)\\,%d)/2)*2:trunc(ow/a/2)*2", &w) &&
+                1 != sscanf(p, "scale=trunc(min(max(iw,ih*a),%d)/2)*2:trunc(ow/a/2)*2", &w) &&
                 1 != sscanf(p, "scale=trunc(min(max(iw\\,ih*dar)\\,min(%d\\,", &w) &&
                 1 != sscanf(p, "scale=trunc(min(max(iw,ih*dar),min(%d,", &w)) {
                 w = 1920;
@@ -129,7 +127,7 @@ static int conv(const char **arg) {
             ext_c = 0;
 #if CONFIG_SCALE_RGA_FILTER
             if ('\0' == scale_rga[0])
-                strcpy(scale_rga, "scale_rga");
+                strcpy(scale_rga, "scale_rga=1920x1080");
             ext_v[ext_c++] = "-vf";
             ext_v[ext_c++] = scale_rga;
 #endif
