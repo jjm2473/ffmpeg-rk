@@ -86,6 +86,7 @@ static MppCodingType rkmpp_get_codingtype(AVCodecContext *avctx)
     case AV_CODEC_ID_H263:          return MPP_VIDEO_CodingH263;
     case AV_CODEC_ID_H264:          return MPP_VIDEO_CodingAVC;
     case AV_CODEC_ID_HEVC:          return MPP_VIDEO_CodingHEVC;
+    case AV_CODEC_ID_AV1:           return MPP_VIDEO_CodingAV1;
     case AV_CODEC_ID_VP8:           return MPP_VIDEO_CodingVP8;
     case AV_CODEC_ID_VP9:           return MPP_VIDEO_CodingVP9;
     case AV_CODEC_ID_MPEG1VIDEO:    /* fallthrough */
@@ -164,8 +165,8 @@ static int rkmpp_prepare_decoder(AVCodecContext *avctx)
     MppPacket packet;
     int ret;
 
-    // send extra data
-    if (avctx->extradata_size) {
+    // HACK: somehow MPP cannot handle extra data for AV1
+    if (avctx->extradata_size && avctx->codec_id != AV_CODEC_ID_AV1) {
         ret = mpp_packet_init(&packet, avctx->extradata, avctx->extradata_size);
         if (ret < 0)
             return AVERROR_UNKNOWN;
@@ -800,6 +801,7 @@ static const AVCodecHWConfigInternal *const rkmpp_hw_configs[] = {
 RKMPP_DEC(h263,  AV_CODEC_ID_H263,          NULL)
 RKMPP_DEC(h264,  AV_CODEC_ID_H264,          "h264_mp4toannexb")
 RKMPP_DEC(hevc,  AV_CODEC_ID_HEVC,          "hevc_mp4toannexb")
+RKMPP_DEC(av1,   AV_CODEC_ID_AV1,           NULL)
 RKMPP_DEC(vp8,   AV_CODEC_ID_VP8,           NULL)
 RKMPP_DEC(vp9,   AV_CODEC_ID_VP9,           NULL)
 RKMPP_DEC(mpeg1, AV_CODEC_ID_MPEG1VIDEO,    NULL)

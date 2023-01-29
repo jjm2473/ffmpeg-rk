@@ -41,6 +41,7 @@ extern const AVCodec ff_vp9_rkmpp_decoder;
 extern const AVCodec ff_h263_rkmpp_decoder;
 extern const AVCodec ff_h264_rkmpp_decoder;
 extern const AVCodec ff_hevc_rkmpp_decoder;
+extern const AVCodec ff_av1_rkmpp_decoder;
 
 extern const AVCodec ff_a64multi_encoder;
 extern const AVCodec ff_a64multi5_encoder;
