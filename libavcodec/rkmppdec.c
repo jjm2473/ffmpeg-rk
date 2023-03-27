@@ -100,7 +100,7 @@ static MppCodingType rkmpp_get_codingtype(AVCodecContext *avctx)
 
 static uint32_t rkmpp_get_frameformat(MppFrameFormat mppformat)
 {
-    switch (mppformat) {
+    switch (mppformat & MPP_FRAME_FMT_MASK) {
     case MPP_FMT_YUV420SP:          return DRM_FORMAT_NV12;
     case MPP_FMT_YUV420SP_10BIT:    return DRM_FORMAT_NV15;
     case MPP_FMT_YUV422SP:          return DRM_FORMAT_NV16;
@@ -110,7 +110,7 @@ static uint32_t rkmpp_get_frameformat(MppFrameFormat mppformat)
 
 static uint32_t rkmpp_get_avformat(MppFrameFormat mppformat)
 {
-    switch (mppformat) {
+    switch (mppformat & MPP_FRAME_FMT_MASK) {
     case MPP_FMT_YUV420SP:          return AV_PIX_FMT_NV12;
     case MPP_FMT_YUV420SP_10BIT:    return AV_PIX_FMT_NONE;
     case MPP_FMT_YUV422SP:          return AV_PIX_FMT_NV16;
@@ -121,7 +121,7 @@ static uint32_t rkmpp_get_avformat(MppFrameFormat mppformat)
 #if CONFIG_LIBRGA
 static uint32_t rkmpp_get_rgaformat(MppFrameFormat mppformat)
 {
-    switch (mppformat) {
+    switch (mppformat & MPP_FRAME_FMT_MASK) {
     case MPP_FMT_YUV420SP:          return RK_FORMAT_YCbCr_420_SP;
     case MPP_FMT_YUV420SP_10BIT:    return RK_FORMAT_YCbCr_420_SP_10B;
     case MPP_FMT_YUV422SP:          return RK_FORMAT_YCbCr_422_SP;
