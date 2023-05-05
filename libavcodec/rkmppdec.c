@@ -180,12 +180,9 @@ static int rkmpp_prepare_decoder(AVCodecContext *avctx)
             return AVERROR_UNKNOWN;
     }
 
-    if (getenv("FFMPEG_RKMPP_SYNC")) {
-        // wait for decode result after feeding any packets
+    // wait for decode result after feeding any packets
+    if (getenv("FFMPEG_RKMPP_SYNC"))
         decoder->sync = 1;
-        ret = 1;
-        decoder->mpi->control(decoder->ctx, MPP_DEC_SET_IMMEDIATE_OUT, &ret);
-    }
     return 0;
 }
 
@@ -268,6 +265,9 @@ static int rkmpp_init_decoder(AVCodecContext *avctx)
     }
 
     decoder->mpi->control(decoder->ctx, MPP_DEC_SET_DISABLE_ERROR, NULL);
+
+    ret = 1;
+    decoder->mpi->control(decoder->ctx, MPP_DEC_SET_IMMEDIATE_OUT, &ret);
 
     ret = rkmpp_prepare_decoder(avctx);
     if (ret < 0) {
@@ -454,7 +454,8 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
     }
 
     if (!mppframe) {
-        av_log(avctx, AV_LOG_DEBUG, "Timeout getting decoded frame.\n");
+        if (timeout != MPP_TIMEOUT_NON_BLOCK)
+            av_log(avctx, AV_LOG_DEBUG, "Timeout getting decoded frame.\n");
         return AVERROR(EAGAIN);
     }
 
@@ -723,10 +724,8 @@ static int rkmpp_receive_frame(AVCodecContext *avctx, AVFrame *frame)
             // send pending data to decoder
             ret = rkmpp_send_packet(avctx, packet);
             if (ret == AVERROR(EAGAIN)) {
-                // some streams might need more packets to start returning frames
-                ret = rkmpp_get_frame(avctx, frame, 1);
-                if (ret != AVERROR(EAGAIN))
-                    return ret;
+                // some clients don't like getting EAGAIN in both of in and out
+                return rkmpp_get_frame(avctx, frame, MPP_TIMEOUT_BLOCK);
             } else if (ret < 0) {
                 av_log(avctx, AV_LOG_ERROR, "Failed to send data (code = %d)\n", ret);
                 return ret;
