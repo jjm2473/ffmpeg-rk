@@ -169,9 +169,6 @@ static int ff_rga_vpp_config_output(AVFilterLink *outlink)
     return 0;
 
 fail:
-#ifdef RGA_SW_USE_IMAGE_ALLOC
-    av_freep(&ctx->sw_frame->data[0]);
-#endif
     av_frame_free(&ctx->sw_frame);
     av_buffer_unref(&ctx->hwframes_ref);
     return err;
