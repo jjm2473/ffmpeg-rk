@@ -228,7 +228,7 @@ static int scale_rga_config_output(AVFilterLink *outlink)
     rect->height = rect->height >> 1 << 1;
     av_log(ctx, AV_LOG_DEBUG, "Final output video size w:%d h:%d\n", rect->width, rect->height);
 
-    rect->wstride = rect->width;
+    rect->wstride = (rect->width + 3) >> 2 << 2;
     rect->hstride = rect->height;
     rect->xoffset = 0;
     rect->yoffset = 0;
