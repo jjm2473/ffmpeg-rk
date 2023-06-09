@@ -486,6 +486,8 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
         avctx->coded_width = FFALIGN(avctx->width, 64);
         avctx->coded_height = FFALIGN(avctx->height, 64);
 
+        mpp_frame_set_hor_stride(mppframe, FFALIGN((int)mpp_frame_get_hor_stride(mppframe), 64))
+
         decoder->mpi->control(decoder->ctx, MPP_DEC_SET_FRAME_INFO, (MppParam) mppframe);
         decoder->mpi->control(decoder->ctx, MPP_DEC_SET_INFO_CHANGE_READY, NULL);
 
