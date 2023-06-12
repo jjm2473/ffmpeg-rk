@@ -608,12 +608,15 @@ static int pick_format(AVFilterLink *link, AVFilterLink *ref)
     if (link->type == AVMEDIA_TYPE_VIDEO) {
         if(ref && ref->type == AVMEDIA_TYPE_VIDEO){
             //FIXME: This should check for AV_PIX_FMT_FLAG_ALPHA after PAL8 pixel format without alpha is implemented
-            int has_alpha= av_pix_fmt_desc_get(ref->format)->nb_components % 2 == 0;
+            AVPixFmtDescriptor *ref_desc= av_pix_fmt_desc_get(ref->format);
+            int has_alpha= ref_desc->nb_components % 2 == 0;
             enum AVPixelFormat best= AV_PIX_FMT_NONE;
             int i;
             for (i = 0; i < link->incfg.formats->nb_formats; i++) {
                 enum AVPixelFormat p = link->incfg.formats->formats[i];
                 best= av_find_best_pix_fmt_of_2(best, p, ref->format, has_alpha, NULL);
+                if (best != AV_PIX_FMT_NONE && ref_desc->flags & AV_PIX_FMT_FLAG_HWACCEL)
+                    break;
             }
             av_log(link->src,AV_LOG_DEBUG, "picking %s out of %d ref:%s alpha:%d\n",
                    av_get_pix_fmt_name(best), link->incfg.formats->nb_formats,
