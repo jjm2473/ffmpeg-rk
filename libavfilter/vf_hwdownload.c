@@ -39,10 +39,11 @@ static int hwdownload_query_formats(AVFilterContext *avctx)
 {
     int err;
 
-    if ((err = ff_formats_ref(ff_formats_pixdesc_filter(AV_PIX_FMT_FLAG_HWACCEL, 0),
-                              &avctx->inputs[0]->outcfg.formats))  ||
-        (err = ff_formats_ref(ff_formats_pixdesc_filter(0, AV_PIX_FMT_FLAG_HWACCEL),
-                              &avctx->outputs[0]->incfg.formats)))
+    if ((err = ff_formats_ref(ff_all_formats(AVMEDIA_TYPE_VIDEO),
+                             &avctx->inputs[0]->outcfg.formats)) < 0)
+        return err;
+    if ((err = ff_formats_ref(ff_formats_pixdesc_filter(0, AV_PIX_FMT_FLAG_HWACCEL),
+                             &avctx->outputs[0]->incfg.formats)) < 0)
         return err;
 
     return 0;
@@ -53,13 +54,11 @@ static int hwdownload_config_input(AVFilterLink *inlink)
     AVFilterContext *avctx = inlink->dst;
     HWDownloadContext *ctx = avctx->priv;
 
-    av_buffer_unref(&ctx->hwframes_ref);
-
     if (!inlink->hw_frames_ctx) {
-        av_log(ctx, AV_LOG_ERROR, "The input must have a hardware frame "
-               "reference.\n");
-        return AVERROR(EINVAL);
+        av_log(avctx, AV_LOG_VERBOSE, "Passthrough software frame.\n");
+        return 0;
     }
+    av_buffer_unref(&ctx->hwframes_ref);
 
     ctx->hwframes_ref = av_buffer_ref(inlink->hw_frames_ctx);
     if (!ctx->hwframes_ref)
@@ -76,30 +75,34 @@ static int hwdownload_config_output(AVFilterLink *outlink)
     AVFilterLink *inlink   = avctx->inputs[0];
     HWDownloadContext *ctx = avctx->priv;
     enum AVPixelFormat *formats;
-    int err, i, found;
+    int err, i, j, found;
 
-    if (!ctx->hwframes_ref)
-        return AVERROR(EINVAL);
+    if (ctx->hwframes_ref) {
+        err = av_hwframe_transfer_get_formats(ctx->hwframes_ref,
+                                            AV_HWFRAME_TRANSFER_DIRECTION_FROM,
+                                            &formats, 0);
+        if (err < 0)
+            return err;
 
-    err = av_hwframe_transfer_get_formats(ctx->hwframes_ref,
-                                          AV_HWFRAME_TRANSFER_DIRECTION_FROM,
-                                          &formats, 0);
-    if (err < 0)
-        return err;
-
-    found = 0;
-    for (i = 0; formats[i] != AV_PIX_FMT_NONE; i++) {
-        if (formats[i] == outlink->format) {
-            found = 1;
-            break;
+        found = 0;
+        for (i = 0; formats[i] != AV_PIX_FMT_NONE; i++) {
+            if (formats[i] == outlink->format) {
+                found = 1;
+                break;
+            }
         }
-    }
-    av_freep(&formats);
+        if (!found && (err = ff_formats_ref(ff_make_format_list(formats),
+                              &outlink->incfg.formats)) >= 0) {
+            found = 1;
+            outlink->format = formats[0];
+        }
+        av_freep(&formats);
 
-    if (!found) {
-        av_log(ctx, AV_LOG_ERROR, "Invalid output format %s for hwframe "
-               "download.\n", av_get_pix_fmt_name(outlink->format));
-        return AVERROR(EINVAL);
+        if (!found) {
+            av_log(ctx, AV_LOG_ERROR, "Invalid output format %s for hwframe "
+                "download.\n", av_get_pix_fmt_name(outlink->format));
+            return AVERROR(EINVAL);
+        }
     }
 
     outlink->w = inlink->w;
@@ -116,7 +119,10 @@ static int hwdownload_filter_frame(AVFilterLink *link, AVFrame *input)
     AVFrame *output = NULL;
     int err;
 
-    if (!ctx->hwframes_ref || !input->hw_frames_ctx) {
+    if (!input->hw_frames_ctx) {
+        return ff_filter_frame(outlink, input);
+    }
+    if (!ctx->hwframes_ref) {
         av_log(ctx, AV_LOG_ERROR, "Input frames must have hardware context.\n");
         err = AVERROR(EINVAL);
         goto fail;
