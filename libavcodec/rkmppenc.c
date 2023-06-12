@@ -1,7 +1,7 @@
 /*
  * RockChip MPP Video Encoder
  * Copyright (c) 2018 hertz.wang@rock-chips.com
- * Copyright (c) 2022 jjm2473 at gmail.com
+ * Copyright (c) 2023 jjm2473 at gmail.com
  *
  * This file is part of FFmpeg.
  *
@@ -87,14 +87,14 @@ static MppFrameFormat rkmpp_get_mppformat(enum AVPixelFormat avformat)
     }
 }
 
-static int rkmpp_close_encoder(AVCodecContext *avctx)
+static av_cold int rkmpp_close_encoder(AVCodecContext *avctx)
 {
     RKMPPEncodeContext *rk_context = avctx->priv_data;
     av_buffer_unref(&rk_context->encoder_ref);
     return 0;
 }
 
-static void rkmpp_release_encoder(void *opaque, uint8_t *data)
+static av_cold void rkmpp_release_encoder(void *opaque, uint8_t *data)
 {
     RKMPPEncoder *encoder = (RKMPPEncoder *)data;
 
@@ -107,7 +107,7 @@ static void rkmpp_release_encoder(void *opaque, uint8_t *data)
     av_free(encoder);
 }
 
-static int rkmpp_preg_config(AVCodecContext *avctx, RKMPPEncoder *encoder,
+static av_cold int rkmpp_preg_config(AVCodecContext *avctx, RKMPPEncoder *encoder,
                              MppEncPrepCfg *prep_cfg)
 {
     int ret;
@@ -135,7 +135,7 @@ static int rkmpp_preg_config(AVCodecContext *avctx, RKMPPEncoder *encoder,
     return 0;
 }
 
-static int rkmpp_rc_config(AVCodecContext *avctx, RKMPPEncoder *encoder,
+static av_cold int rkmpp_rc_config(AVCodecContext *avctx, RKMPPEncoder *encoder,
                            MppEncRcCfg *rc_cfg)
 {
     int ret;
@@ -216,7 +216,7 @@ static int rkmpp_rc_config(AVCodecContext *avctx, RKMPPEncoder *encoder,
     return 0;
 }
 
-static int rkmpp_codec_config(AVCodecContext *avctx, RKMPPEncoder *encoder,
+static av_cold int rkmpp_codec_config(AVCodecContext *avctx, RKMPPEncoder *encoder,
                               MppCodingType codectype, RKMPPEncodeContext *ctx,
                               MppEncCodecCfg *codec_cfg)
 {
@@ -284,7 +284,7 @@ static int rkmpp_codec_config(AVCodecContext *avctx, RKMPPEncoder *encoder,
     return 0;
 }
 
-static int rkmpp_init_encoder(AVCodecContext *avctx)
+static av_cold int rkmpp_init_encoder(AVCodecContext *avctx)
 {
     int ret;
     MppCodingType codectype;
@@ -738,23 +738,23 @@ static const AVCodecHWConfigInternal *rkmpp_hw_configs[] = {
 // TODO: .send_frame .receive_packet
 #define RKMPP_ENC(NAME, ID, BSFS) \
     RKMPP_ENC_CLASS(NAME) \
-    AVCodec ff_##NAME##_rkmpp_encoder = { \
-        .name           = #NAME "_rkmpp", \
-        .long_name      = NULL_IF_CONFIG_SMALL(#NAME " (rkmpp)"), \
-        .type           = AVMEDIA_TYPE_VIDEO, \
-        .id             = ID, \
+    FFCodec ff_##NAME##_rkmpp_encoder = { \
+        .p.name           = #NAME "_rkmpp", \
+        .p.long_name      = NULL_IF_CONFIG_SMALL(#NAME " (rkmpp)"), \
+        .p.type           = AVMEDIA_TYPE_VIDEO, \
+        .p.id             = ID, \
         .init           = rkmpp_init_encoder, \
         .close          = rkmpp_close_encoder, \
-        .encode2        = rkmpp_encode_frame, \
+        FF_CODEC_ENCODE_CB(rkmpp_encode_frame), \
         .priv_data_size = sizeof(RKMPPEncodeContext), \
-        .priv_class     = &rkmpp_##NAME##_enc_class, \
-        .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE, \
-        .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP, \
-        .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_DRM_PRIME, \
+        .p.priv_class     = &rkmpp_##NAME##_enc_class, \
+        .p.capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE, \
+        .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP, \
+        .p.pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_DRM_PRIME, \
                                                          AV_PIX_FMT_NONE }, \
         .hw_configs     = rkmpp_hw_configs, \
         .bsfs           = BSFS, \
-        .wrapper_name   = "rkmpp", \
+        .p.wrapper_name   = "rkmpp", \
     };
 
 RKMPP_ENC(h264, AV_CODEC_ID_H264, NULL)
