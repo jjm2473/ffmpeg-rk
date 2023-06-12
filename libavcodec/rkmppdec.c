@@ -112,7 +112,7 @@ static uint32_t rkmpp_get_avformat(MppFrameFormat mppformat)
 {
     switch (mppformat & MPP_FRAME_FMT_MASK) {
     case MPP_FMT_YUV420SP:          return AV_PIX_FMT_NV12;
-    case MPP_FMT_YUV420SP_10BIT:    return AV_PIX_FMT_NONE;
+    case MPP_FMT_YUV420SP_10BIT:    return AV_PIX_FMT_P010;
     case MPP_FMT_YUV422SP:          return AV_PIX_FMT_NV16;
     default:                        return 0;
     }
@@ -194,7 +194,7 @@ static int rkmpp_init_decoder(AVCodecContext *avctx)
     char *env;
     int ret;
 
-    avctx->pix_fmt = ff_get_format(avctx, avctx->codec->pix_fmts);
+    avctx->pix_fmt = AV_PIX_FMT_DRM_PRIME;
 
     // create a decoder and a ref to it
     decoder = av_mallocz(sizeof(RKMPPDecoder));
@@ -250,7 +250,7 @@ static int rkmpp_init_decoder(AVCodecContext *avctx)
         goto fail;
     }
 
-    ret = mpp_buffer_group_get_internal(&decoder->frame_group, MPP_BUFFER_TYPE_ION);
+    ret = mpp_buffer_group_get_internal(&decoder->frame_group, MPP_BUFFER_TYPE_DRM);
     if (ret) {
        av_log(avctx, AV_LOG_ERROR, "Failed to get buffer group (code = %d)\n", ret);
        ret = AVERROR_UNKNOWN;
@@ -275,8 +275,6 @@ static int rkmpp_init_decoder(AVCodecContext *avctx)
         goto fail;
     }
 
-    av_log(avctx, AV_LOG_DEBUG, "RKMPP decoder initialized successfully.\n");
-
     decoder->device_ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_DRM);
     if (!decoder->device_ref) {
         ret = AVERROR(ENOMEM);
@@ -285,6 +283,8 @@ static int rkmpp_init_decoder(AVCodecContext *avctx)
     ret = av_hwdevice_ctx_init(decoder->device_ref);
     if (ret < 0)
         goto fail;
+
+    av_log(avctx, AV_LOG_DEBUG, "RKMPP decoder initialized successfully.\n");
 
     return 0;
 
@@ -481,8 +481,9 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
     if (mpp_frame_get_info_change(mppframe)) {
         AVHWFramesContext *hwframes;
 
-        av_log(avctx, AV_LOG_INFO, "Decoder noticed an info change (%dx%d), format=%d\n",
+        av_log(avctx, AV_LOG_INFO, "Decoder noticed an info change (%dx%d), stride(%dx%d), format=%d\n",
                (int)mpp_frame_get_width(mppframe), (int)mpp_frame_get_height(mppframe),
+               (int)mpp_frame_get_hor_stride(mppframe), (int)mpp_frame_get_ver_stride(mppframe), 
                (int)mpp_frame_get_fmt(mppframe));
 
         avctx->width = mpp_frame_get_width(mppframe);
@@ -502,6 +503,7 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
             ret = AVERROR(ENOMEM);
             goto fail;
         }
+        av_log(avctx, AV_LOG_VERBOSE, "hw_frames_ctx->data=%p\n", decoder->frames_ref->data);
 
         mppformat = mpp_frame_get_fmt(mppframe);
 
@@ -530,14 +532,16 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
 
     rkmpp_update_fps(avctx);
 
+/*
     if (avctx->pix_fmt != AV_PIX_FMT_DRM_PRIME) {
+        av_log(avctx, AV_LOG_DEBUG, "Not drm prime.\n");
         ret = ff_get_buffer(avctx, frame, 0);
         if (ret < 0)
             goto out;
     }
-
+*/
     // setup general frame fields
-    frame->format           = avctx->pix_fmt;
+    frame->format           = AV_PIX_FMT_DRM_PRIME;
     frame->width            = mpp_frame_get_width(mppframe);
     frame->height           = mpp_frame_get_height(mppframe);
     frame->pts              = mpp_frame_get_pts(mppframe);
@@ -551,10 +555,12 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
     frame->interlaced_frame = ((mode & MPP_FRAME_FLAG_FIELD_ORDER_MASK) == MPP_FRAME_FLAG_DEINTERLACED);
     frame->top_field_first  = ((mode & MPP_FRAME_FLAG_FIELD_ORDER_MASK) == MPP_FRAME_FLAG_TOP_FIRST);
 
+/*
     if (avctx->pix_fmt != AV_PIX_FMT_DRM_PRIME) {
         ret = rkmpp_convert_frame(avctx, frame, mppframe, buffer);
         goto out;
     }
+*/
 
     mppformat = mpp_frame_get_fmt(mppframe);
     drmformat = rkmpp_get_frameformat(mppformat);
@@ -723,8 +729,10 @@ static int rkmpp_receive_frame(AVCodecContext *avctx, AVFrame *frame)
             // send pending data to decoder
             ret = rkmpp_send_packet(avctx, packet);
             if (ret == AVERROR(EAGAIN)) {
-                // some clients don't like getting EAGAIN in both of in and out
-                return rkmpp_get_frame(avctx, frame, MPP_TIMEOUT_BLOCK);
+                // some streams might need more packets to start returning frames
+                ret = rkmpp_get_frame(avctx, frame, 5);
+                if (ret != AVERROR(EAGAIN))
+                    return ret;
             } else if (ret < 0) {
                 av_log(avctx, AV_LOG_ERROR, "Failed to send data (code = %d)\n", ret);
                 return ret;
@@ -760,7 +768,6 @@ static void rkmpp_flush(AVCodecContext *avctx)
 
 static const AVCodecHWConfigInternal *const rkmpp_hw_configs[] = {
     HW_CONFIG_INTERNAL(DRM_PRIME),
-    HW_CONFIG_INTERNAL(YUV420P),
     NULL
 };
 
@@ -786,7 +793,6 @@ static const AVCodecHWConfigInternal *const rkmpp_hw_configs[] = {
         .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
         .caps_internal  = FF_CODEC_CAP_CONTIGUOUS_BUFFERS, \
         .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_DRM_PRIME, \
-                                                         AV_PIX_FMT_YUV420P, \
                                                          AV_PIX_FMT_NONE}, \
         .hw_configs     = rkmpp_hw_configs, \
         .bsfs           = BSFS, \
