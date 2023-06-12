@@ -3556,6 +3556,7 @@ libzmq_protocol_deps="libzmq"
 libzmq_protocol_select="network"
 
 # filters
+scale_rga_filter_deps="rkmpp"
 afir_filter_deps="avcodec"
 afir_filter_select="rdft"
 ametadata_filter_deps="avformat"
