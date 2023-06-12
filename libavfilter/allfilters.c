@@ -168,6 +168,7 @@ extern const AVFilter ff_asrc_sine;
 
 extern const AVFilter ff_asink_anullsink;
 
+extern const AVFilter ff_vf_scale_rga;
 extern const AVFilter ff_vf_addroi;
 extern const AVFilter ff_vf_alphaextract;
 extern const AVFilter ff_vf_alphamerge;
