@@ -701,6 +701,7 @@ static int rkmpp_receive_frame(AVCodecContext *avctx, AVFrame *frame)
     RKMPPDecoder *decoder = (RKMPPDecoder *)rk_context->decoder_ref->data;
     AVPacket *packet = &decoder->packet;
     int ret;
+    int retry = 0;
 
     // no more frames after EOS
     if (decoder->eos)
@@ -731,8 +732,9 @@ static int rkmpp_receive_frame(AVCodecContext *avctx, AVFrame *frame)
             if (ret == AVERROR(EAGAIN)) {
                 // some streams might need more packets to start returning frames
                 ret = rkmpp_get_frame(avctx, frame, 5);
-                if (ret != AVERROR(EAGAIN))
+                if (ret != AVERROR(EAGAIN) || retry > 20)
                     return ret;
+                ++retry;
             } else if (ret < 0) {
                 av_log(avctx, AV_LOG_ERROR, "Failed to send data (code = %d)\n", ret);
                 return ret;
@@ -743,6 +745,7 @@ static int rkmpp_receive_frame(AVCodecContext *avctx, AVFrame *frame)
                 // blocked waiting for decode result
                 if (decoder->sync)
                     return rkmpp_get_frame(avctx, frame, MPP_TIMEOUT_BLOCK);
+                retry = 0;
             }
         }
     }
