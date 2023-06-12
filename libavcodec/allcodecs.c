@@ -32,6 +32,16 @@
 #include "codec.h"
 #include "codec_id.h"
 
+/* RKMPP */
+extern const AVCodec ff_mpeg4_rkmpp_decoder;
+extern const AVCodec ff_mpeg1_rkmpp_decoder;
+extern const AVCodec ff_mpeg2_rkmpp_decoder;
+extern const AVCodec ff_vp8_rkmpp_decoder;
+extern const AVCodec ff_vp9_rkmpp_decoder;
+extern const AVCodec ff_h263_rkmpp_decoder;
+extern const AVCodec ff_h264_rkmpp_decoder;
+extern const AVCodec ff_hevc_rkmpp_decoder;
+
 extern const AVCodec ff_a64multi_encoder;
 extern const AVCodec ff_a64multi5_encoder;
 extern const AVCodec ff_aasc_decoder;
@@ -145,20 +155,17 @@ extern const AVCodec ff_h263i_decoder;
 extern const AVCodec ff_h263p_encoder;
 extern const AVCodec ff_h263p_decoder;
 extern const AVCodec ff_h263_v4l2m2m_decoder;
-extern const AVCodec ff_h263_rkmpp_decoder;
 extern const AVCodec ff_h264_decoder;
 extern const AVCodec ff_h264_crystalhd_decoder;
 extern const AVCodec ff_h264_v4l2m2m_decoder;
 extern const AVCodec ff_h264_mediacodec_decoder;
 extern const AVCodec ff_h264_mmal_decoder;
 extern const AVCodec ff_h264_qsv_decoder;
-extern const AVCodec ff_h264_rkmpp_decoder;
 extern const AVCodec ff_h264_rkmpp_encoder;
 extern const AVCodec ff_hap_encoder;
 extern const AVCodec ff_hap_decoder;
 extern const AVCodec ff_hevc_decoder;
 extern const AVCodec ff_hevc_qsv_decoder;
-extern const AVCodec ff_hevc_rkmpp_decoder;
 extern const AVCodec ff_hevc_v4l2m2m_decoder;
 extern const AVCodec ff_hnm4_video_decoder;
 extern const AVCodec ff_hq_hqa_decoder;
@@ -207,16 +214,13 @@ extern const AVCodec ff_mpeg4_decoder;
 extern const AVCodec ff_mpeg4_crystalhd_decoder;
 extern const AVCodec ff_mpeg4_v4l2m2m_decoder;
 extern const AVCodec ff_mpeg4_mmal_decoder;
-extern const AVCodec ff_mpeg4_rkmpp_decoder;
 extern const AVCodec ff_mpegvideo_decoder;
 extern const AVCodec ff_mpeg1_v4l2m2m_decoder;
-extern const AVCodec ff_mpeg1_rkmpp_decoder;
 extern const AVCodec ff_mpeg2_mmal_decoder;
 extern const AVCodec ff_mpeg2_crystalhd_decoder;
 extern const AVCodec ff_mpeg2_v4l2m2m_decoder;
 extern const AVCodec ff_mpeg2_qsv_decoder;
 extern const AVCodec ff_mpeg2_mediacodec_decoder;
-extern const AVCodec ff_mpeg2_rkmpp_decoder;
 extern const AVCodec ff_msa1_decoder;
 extern const AVCodec ff_mscc_decoder;
 extern const AVCodec ff_msmpeg4v1_decoder;
@@ -368,10 +372,8 @@ extern const AVCodec ff_vp6a_decoder;
 extern const AVCodec ff_vp6f_decoder;
 extern const AVCodec ff_vp7_decoder;
 extern const AVCodec ff_vp8_decoder;
-extern const AVCodec ff_vp8_rkmpp_decoder;
 extern const AVCodec ff_vp8_v4l2m2m_decoder;
 extern const AVCodec ff_vp9_decoder;
-extern const AVCodec ff_vp9_rkmpp_decoder;
 extern const AVCodec ff_vp9_v4l2m2m_decoder;
 extern const AVCodec ff_vqa_decoder;
 extern const AVCodec ff_webp_decoder;
