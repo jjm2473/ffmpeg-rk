@@ -166,9 +166,6 @@ static int rkmpp_prepare_decoder(AVCodecContext *avctx)
             return AVERROR_UNKNOWN;
     }
 
-    // wait for decode result after feeding any packets
-    if (getenv("FFMPEG_RKMPP_SYNC"))
-        decoder->sync = 1;
     return 0;
 }
 
@@ -252,9 +249,12 @@ int avrkmpp_init_decoder(AVCodecContext *avctx)
 
     decoder->mpi->control(decoder->ctx, MPP_DEC_SET_DISABLE_ERROR, NULL);
 
-    ret = 1;
-    decoder->mpi->control(decoder->ctx, MPP_DEC_SET_IMMEDIATE_OUT, &ret);
-
+    // wait for decode result after feeding any packets
+    if (getenv("FFMPEG_RKMPP_SYNC")){
+        decoder->sync = 1;
+        ret = 1;
+        decoder->mpi->control(decoder->ctx, MPP_DEC_SET_IMMEDIATE_OUT, &ret);
+    }
     ret = rkmpp_prepare_decoder(avctx);
     if (ret < 0) {
         av_log(avctx, AV_LOG_ERROR, "Failed to prepare decoder (code = %d)\n", ret);
@@ -688,7 +688,6 @@ int avrkmpp_receive_frame(AVCodecContext *avctx, AVFrame *frame,
     RKMPPDecoder *decoder = (RKMPPDecoder *)rk_context->decoder_ref->data;
     AVPacket *packet = &decoder->packet;
     int ret;
-    int retry = 0;
 
     // no more frames after EOS
     if (decoder->eos)
@@ -719,9 +718,8 @@ int avrkmpp_receive_frame(AVCodecContext *avctx, AVFrame *frame,
             if (ret == AVERROR(EAGAIN)) {
                 // some streams might need more packets to start returning frames
                 ret = rkmpp_get_frame(avctx, frame, 5);
-                if (ret != AVERROR(EAGAIN) || retry > 20)
+                if (ret != AVERROR(EAGAIN))
                     return ret;
-                ++retry;
             } else if (ret < 0) {
                 av_log(avctx, AV_LOG_ERROR, "Failed to send data (code = %d)\n", ret);
                 return ret;
@@ -732,7 +730,6 @@ int avrkmpp_receive_frame(AVCodecContext *avctx, AVFrame *frame,
                 // blocked waiting for decode result
                 if (decoder->sync)
                     return rkmpp_get_frame(avctx, frame, MPP_TIMEOUT_BLOCK);
-                retry = 0;
             }
         }
     }
