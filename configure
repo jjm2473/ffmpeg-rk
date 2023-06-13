@@ -1961,6 +1961,7 @@ LIBRARY_LIST="
     avcodec
     swresample
     avutil
+    avrkmpp
 "
 
 LICENSE_LIST="
@@ -3631,7 +3632,7 @@ libzmq_protocol_deps="libzmq"
 libzmq_protocol_select="network"
 
 # filters
-scale_rga_filter_deps="rkmpp"
+scale_rga_filter_deps="rkmpp librga"
 ametadata_filter_deps="avformat"
 amovie_filter_deps="avcodec avformat"
 aresample_filter_deps="swresample"
@@ -6779,6 +6780,8 @@ enabled rkmpp             && { require_pkg_config rkmpp rockchip_mpp  rockchip/r
                                { enabled librga ||
                                  warn "using rkmpp without librga"; }
                              }
+enabled librga            && enable scale_rga_filter
+enabled rkmpp             && enable avrkmpp
 enabled vapoursynth       && require_pkg_config vapoursynth "vapoursynth-script >= 42" VSScript.h vsscript_init
 
 
@@ -7097,7 +7100,7 @@ EOF
 
 # add some linker flags
 check_ldflags -Wl,--warn-common
-check_ldflags -Wl,-rpath-link=:libpostproc:libswresample:libswscale:libavfilter:libavdevice:libavformat:libavcodec:libavutil
+check_ldflags -Wl,-rpath-link=:libpostproc:libswresample:libswscale:libavfilter:libavdevice:libavformat:libavcodec:libavutil:libavrkmpp
 enabled rpath && add_ldexeflags -Wl,-rpath,$libdir && add_ldsoflags -Wl,-rpath,$libdir
 test_ldflags -Wl,-Bsymbolic && append SHFLAGS -Wl,-Bsymbolic
 
@@ -7467,6 +7470,9 @@ enabled sr_filter           && prepend avfilter_deps "avformat swscale"
 enabled subtitles_filter    && prepend avfilter_deps "avformat avcodec"
 enabled uspp_filter         && prepend avfilter_deps "avcodec"
 enabled zoompan_filter      && prepend avfilter_deps "swscale"
+
+enabled librga              && prepend avfilter_deps "avrkmpp"
+enabled rkmpp               && prepend avcodec_deps "avrkmpp"
 
 enabled lavfi_indev         && prepend avdevice_deps "avfilter"
 

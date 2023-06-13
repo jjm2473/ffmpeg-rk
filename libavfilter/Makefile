@@ -181,7 +181,7 @@ OBJS-$(CONFIG_SINE_FILTER)                   += asrc_sine.o
 OBJS-$(CONFIG_ANULLSINK_FILTER)              += asink_anullsink.o
 
 # video filters
-OBJS-$(CONFIG_RKMPP)                         += vf_scale_rga.o
+OBJS-$(CONFIG_SCALE_RGA_FILTER)              += vf_scale_rga.o
 OBJS-$(CONFIG_ADDROI_FILTER)                 += vf_addroi.o
 OBJS-$(CONFIG_ALPHAEXTRACT_FILTER)           += vf_extractplanes.o
 OBJS-$(CONFIG_ALPHAMERGE_FILTER)             += vf_alphamerge.o framesync.o
