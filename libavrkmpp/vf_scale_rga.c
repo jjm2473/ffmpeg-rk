@@ -163,7 +163,8 @@ int avrkmpp_scale_rga_config_output(AVFilterLink *outlink)
     rect->height = rect->height >> 1 << 1;
     av_log(ctx, AV_LOG_DEBUG, "Final output video size w:%d h:%d\n", rect->width, rect->height);
 
-    rect->wstride = (rect->width + 3) >> 2 << 2;
+    // wstride = width * (bit_depth >> 3), but we always use YUV420P, bit_depth=8
+    rect->wstride = FFALIGN(rect->width, 16);
     rect->hstride = rect->height;
     rect->xoffset = 0;
     rect->yoffset = 0;
