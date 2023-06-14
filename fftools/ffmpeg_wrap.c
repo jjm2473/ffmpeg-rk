@@ -1,6 +1,7 @@
 #ifdef HAVE_AV_CONFIG_H
 // ffmpeg make will go here
 #include "config.h"
+#include "config_components.h"
 
 #include <time.h>
 #include <errno.h>
