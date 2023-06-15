@@ -486,7 +486,7 @@ static av_cold int scale_rga_init(AVFilterContext *avctx)
     if (ret = init_dict(avctx))
         return ret;
 
-    if (ret = mpp_buffer_group_get_internal(&ctx->frame_group, MPP_BUFFER_TYPE_DRM)) {
+    if (ret = mpp_buffer_group_get_internal(&ctx->frame_group, MPP_BUFFER_TYPE_DRM | MPP_BUFFER_FLAGS_DMA32)) {
         av_log(ctx, AV_LOG_ERROR, "Failed to get buffer group (code = %d)\n", ret);
         return AVERROR_UNKNOWN;
     }
