@@ -1,3 +1,7 @@
+本项目主要用于支持 RK35XX 平台的硬件转码，例如用于支持 Jellyfin，如果你想在桌面系统使用（例如firefox），或者本项目无法满足你的需求，可以试试 https://github.com/hbiyik/FFmpeg/ 。
+
+This project is mainly used to support hardware transcoding of RK35XX platform, for example, to support Jellyfin. If you want to use it on a desktop system (such as firefox), or this project cannot meet your needs, you can try https://github.com/hbiyik/FFmpeg/ .
+
 FFmpeg README
 =============
 
