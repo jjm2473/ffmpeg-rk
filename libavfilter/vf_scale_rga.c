@@ -269,6 +269,7 @@ static void rga_release_frame(void *opaque, uint8_t *data)
     av_free(desc);
     mpp_buffer_put(buffer);
     av_buffer_unref(&framecontext->frame_group_ref);
+    av_free(framecontext);
 }
 
 static uint32_t rga_get_drmformat(uint32_t rga_fmt) {
