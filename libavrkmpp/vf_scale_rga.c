@@ -125,29 +125,87 @@ fail:
 static uint32_t ff_null_get_rgaformat(enum AVPixelFormat pix_fmt)
 {
     switch (pix_fmt) {
-    case AV_PIX_FMT_YUV420P:       return RK_FORMAT_YCbCr_420_P;
+    // MPP decoded
     case AV_PIX_FMT_NV12:          return RK_FORMAT_YCbCr_420_SP;
     case AV_PIX_FMT_P010:          return RK_FORMAT_YCbCr_420_SP_10B;
     case AV_PIX_FMT_NV16:          return RK_FORMAT_YCbCr_422_SP;
+    // others
+    case AV_PIX_FMT_YUV420P:       return RK_FORMAT_YCbCr_420_P;
     case AV_PIX_FMT_YUYV422:       return RK_FORMAT_YUYV_422;
     case AV_PIX_FMT_UYVY422:       return RK_FORMAT_UYVY_422;
+    case AV_PIX_FMT_RGBA:          return RK_FORMAT_ABGR_8888;
+    case AV_PIX_FMT_RGB0:          return RK_FORMAT_XBGR_8888;
+    case AV_PIX_FMT_BGRA:          return RK_FORMAT_ARGB_8888;
+    case AV_PIX_FMT_BGR0:          return RK_FORMAT_XRGB_8888;
+    case AV_PIX_FMT_ARGB:          return RK_FORMAT_BGRA_8888;
+    case AV_PIX_FMT_0RGB:          return RK_FORMAT_BGRX_8888;
+    case AV_PIX_FMT_ABGR:          return RK_FORMAT_RGBA_8888;
+    case AV_PIX_FMT_0BGR:          return RK_FORMAT_RGBX_8888;
+    case AV_PIX_FMT_RGB24:         return RK_FORMAT_BGR_888;
+    case AV_PIX_FMT_BGR24:         return RK_FORMAT_RGB_888;
+    case AV_PIX_FMT_RGB565:        return RK_FORMAT_BGR_565;
+    case AV_PIX_FMT_BGR565:        return RK_FORMAT_RGB_565;
+    case AV_PIX_FMT_GRAY8:         return RK_FORMAT_YCbCr_400;
     default:                       return RK_FORMAT_UNKNOWN;
     }
 }
 
 static float get_bpp_from_rga_format(uint32_t rga_fmt) {
-    switch (rga_fmt) {
-    case RK_FORMAT_YCbCr_420_P:
-    case RK_FORMAT_YCbCr_420_SP:
-      return 1.5;
-    case RK_FORMAT_YCbCr_420_SP_10B:
-    case RK_FORMAT_YCbCr_422_SP:
-    case RK_FORMAT_YUYV_422:
-    case RK_FORMAT_UYVY_422:
-      return 2.0;
-    default:
-      av_log(NULL, AV_LOG_WARNING, "unknown RGA format %d\n", rga_fmt);
-      return 2.0;
+    // copy from librga/core/RgaUtils.cpp get_bpp_from_format
+    // actually we only use RK_FORMAT_YCbCr_420_SP in this project
+    switch(rga_fmt) {
+        case RK_FORMAT_YCbCr_400:
+            return 1.0;
+        case RK_FORMAT_YCbCr_420_SP:
+        case RK_FORMAT_YCbCr_420_P:
+        case RK_FORMAT_YCrCb_420_P:
+        case RK_FORMAT_YCrCb_420_SP:
+            return 1.5;
+        case RK_FORMAT_RGB_565:
+        case RK_FORMAT_RGBA_5551:
+        case RK_FORMAT_RGBA_4444:
+        case RK_FORMAT_BGR_565:
+        case RK_FORMAT_BGRA_5551:
+        case RK_FORMAT_BGRA_4444:
+        case RK_FORMAT_ARGB_5551:
+        case RK_FORMAT_ARGB_4444:
+        case RK_FORMAT_ABGR_5551:
+        case RK_FORMAT_ABGR_4444:
+        case RK_FORMAT_YCbCr_422_SP:
+        case RK_FORMAT_YCbCr_422_P:
+        case RK_FORMAT_YCrCb_422_SP:
+        case RK_FORMAT_YCrCb_422_P:
+        /* yuyv */
+        case RK_FORMAT_YVYU_422:
+        case RK_FORMAT_VYUY_422:
+        case RK_FORMAT_YUYV_422:
+        case RK_FORMAT_UYVY_422:
+        case RK_FORMAT_YVYU_420:
+        case RK_FORMAT_VYUY_420:
+        case RK_FORMAT_YUYV_420:
+        case RK_FORMAT_UYVY_420:
+
+        case RK_FORMAT_YCbCr_420_SP_10B:
+        case RK_FORMAT_YCrCb_420_SP_10B:
+            return 2.0;
+        case RK_FORMAT_YCbCr_422_10b_SP:
+        case RK_FORMAT_YCrCb_422_10b_SP:
+            return 2.5;
+        case RK_FORMAT_BGR_888:
+        case RK_FORMAT_RGB_888:
+            return 3.0;
+        case RK_FORMAT_RGBA_8888:
+        case RK_FORMAT_RGBX_8888:
+        case RK_FORMAT_BGRA_8888:
+        case RK_FORMAT_BGRX_8888:
+        case RK_FORMAT_ARGB_8888:
+        case RK_FORMAT_XRGB_8888:
+        case RK_FORMAT_ABGR_8888:
+        case RK_FORMAT_XBGR_8888:
+            return 4.0;
+        default:
+            av_log(NULL, AV_LOG_WARNING, "unknown RGA format %d\n", rga_fmt);
+            return 2.0;
     }
 }
 
@@ -203,10 +261,11 @@ static void rga_release_frame(void *opaque, uint8_t *data)
     av_free(framecontext);
 }
 
+// librga/core/utils/drm_utils/src/drm_utils.cpp drm_fourcc_table
 static uint32_t rga_get_drmformat(uint32_t rga_fmt) {
     switch (rga_fmt) {
     case RK_FORMAT_YCbCr_420_SP:        return DRM_FORMAT_NV12;
-    case RK_FORMAT_YCbCr_420_SP_10B:    return DRM_FORMAT_NV12_10;
+    case RK_FORMAT_YCbCr_420_SP_10B:    return DRM_FORMAT_NV15;
     case RK_FORMAT_YCbCr_422_SP:        return DRM_FORMAT_NV16;
     case RK_FORMAT_YUYV_422:            return DRM_FORMAT_YUYV;
     case RK_FORMAT_UYVY_422:            return DRM_FORMAT_UYVY;
@@ -245,15 +304,25 @@ int avrkmpp_scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame, A
             ff_null_get_rgaformat(((AVHWFramesContext*)input_frame->hw_frames_ctx->data)->sw_format));
         src_info.fd = desc->objects[0].fd;
     } else {
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(input_frame->format);
         char *src_y = input_frame->data[0];
         char *src_u = input_frame->data[1];
-        int y_pitch = input_frame->linesize[0];
-        int src_height = (src_u - src_y) / y_pitch;
-        if (src_height < 0 || (src_height & 1) || (y_pitch & 1) || src_y + (src_height * y_pitch) != src_u) {
+        int y_pitch = input_frame->width;
+        int src_height = input_frame->height;
+        if (desc->flags & AV_PIX_FMT_FLAG_PLANAR) {
+            y_pitch = input_frame->linesize[0];
+            src_height = (src_u - src_y) / y_pitch;
+        }
+        if (src_height < 0 || (src_height & 1) || (src_height>>1 > input_frame->height) || (y_pitch & 1)) {
+            // RGA only supports continuous memory, and aligned to 2
             src_y = ctx->sw_frame->data[0];
             src_u = ctx->sw_frame->data[1];
-            y_pitch = ctx->sw_frame->linesize[0];
-            src_height = (src_u - src_y) / y_pitch;
+            y_pitch = ctx->sw_frame->width;
+            src_height = ctx->sw_frame->height;
+            if (desc->flags & AV_PIX_FMT_FLAG_PLANAR) {
+                y_pitch = ctx->sw_frame->linesize[0];
+                src_height = (src_u - src_y) / y_pitch;
+            }
 
             if ((err = av_frame_copy(ctx->sw_frame, input_frame)) < 0)
                 goto fail;
