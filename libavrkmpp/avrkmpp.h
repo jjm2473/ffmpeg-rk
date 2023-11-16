@@ -25,9 +25,6 @@ const char *avrkmpp_configuration(void);
  */
 const char *avrkmpp_license(void);
 
-#include <rockchip/mpp_buffer.h>
-#include <rga/RgaApi.h>
-
 #include "libavutil/log.h"
 #include "libavutil/buffer.h"
 #include "libavutil/frame.h"
@@ -35,16 +32,9 @@ const char *avrkmpp_license(void);
 typedef struct ScaleRGAContext {
     const AVClass *class;
 
-    AVBufferRef *frame_group_ref;
-
-    AVBufferRef *device_ref;
-    AVBufferRef *hwframes_ref;
-    rga_rect_t output;
-    int passthrough;
-
-    MppBufferGroup frame_group;
-
-    AVFrame *sw_frame;
+    AVBufferRef *filter_ref;
+    int width;
+    int height;
 
     char *w_expr;      // width expression string
     char *h_expr;      // height expression string
@@ -82,7 +72,6 @@ void avrkmpp_decoder_flush(AVCodecContext *);
 typedef struct {
     AVClass *av_class;
     AVBufferRef *encoder_ref;
-    void *prep_cfg;
     int profile;
     int dct8x8;
 } RKMPPEncodeContext;

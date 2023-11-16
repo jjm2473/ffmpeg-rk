@@ -62,24 +62,23 @@ static int scale_rga_filter_frame_l(AVFilterLink *inlink, AVFrame *input_frame) 
 }
 
 static int scale_rga_config_output_l(AVFilterLink *outlink) {
+    int err;
     AVFilterContext *avctx = outlink->src;
     AVFilterLink *inlink   = outlink->src->inputs[0];
     ScaleRGAContext *ctx   = avctx->priv;
-    rga_rect_t *rect = &ctx->output;
-    int err;
 
     if ((err = ff_scale_eval_dimensions(ctx,
                                         ctx->w_expr, ctx->h_expr,
                                         inlink, outlink,
-                                        &rect->width, &rect->height)) < 0)
+                                        &ctx->width, &ctx->height)) < 0)
         return err;
 
-    ff_scale_adjust_dimensions(inlink, &rect->width, &rect->height,
+    ff_scale_adjust_dimensions(inlink, &ctx->width, &ctx->height,
                                ctx->force_original_aspect_ratio, ctx->force_divisible_by);
 
-    if ((ctx->down_scale_only == 1) && (rect->width > inlink->w || rect->height > inlink->h)) {
-        rect->width = inlink->w;
-        rect->height = inlink->h;
+    if ((ctx->down_scale_only == 1) && (ctx->width > inlink->w || ctx->height > inlink->h)) {
+        ctx->width = inlink->w;
+        ctx->height = inlink->h;
     }
 
     if ((err = avrkmpp_scale_rga_config_output(outlink)) < 0) {
@@ -97,7 +96,6 @@ static int scale_rga_config_output_l(AVFilterLink *outlink) {
 static av_cold int init_dict(AVFilterContext *ctx)
 {
     ScaleRGAContext *scale = ctx->priv;
-    rga_rect_t *rect = &scale->output;
     int ret;
 
     if (scale->size_str && (scale->w_expr || scale->h_expr)) {
@@ -111,14 +109,14 @@ static av_cold int init_dict(AVFilterContext *ctx)
 
     if (scale->size_str) {
         char buf[32];
-        if ((ret = av_parse_video_size(&rect->width, &rect->height, scale->size_str)) < 0) {
+        if ((ret = av_parse_video_size(&scale->width, &scale->height, scale->size_str)) < 0) {
             av_log(ctx, AV_LOG_ERROR,
                    "Invalid size '%s'\n", scale->size_str);
             return ret;
         }
-        snprintf(buf, sizeof(buf)-1, "%d", rect->width);
+        snprintf(buf, sizeof(buf)-1, "%d", scale->width);
         av_opt_set(scale, "w", buf, 0);
-        snprintf(buf, sizeof(buf)-1, "%d", rect->height);
+        snprintf(buf, sizeof(buf)-1, "%d", scale->height);
         av_opt_set(scale, "h", buf, 0);
     }
     if (!scale->w_expr)

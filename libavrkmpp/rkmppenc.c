@@ -20,14 +20,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <drm_fourcc.h>
 #include <pthread.h>
-#include <rockchip/mpp_buffer.h>
-#include <rockchip/rk_mpi.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "avrkmpp.h"
+#include "rkmpp.h"
 
 #include "libavutil/hwcontext_drm.h"
 #include "libavutil/pixdesc.h"
@@ -41,6 +39,9 @@
 typedef struct {
     MppCtx ctx;
     MppApi *mpi;
+    const rkformat *format;
+    const AVPixFmtDescriptor *fmt_desc;
+    MppEncPrepCfg prep_cfg;
 
     char eos_reached;
 } RKMPPEncoder;
@@ -49,29 +50,6 @@ typedef struct {
     MppPacket packet;
     AVBufferRef *encoder_ref;
 } RKMPPPacketContext;
-
-static MppCodingType rkmpp_get_codingtype(AVCodecContext *avctx)
-{
-    switch (avctx->codec_id) {
-    case AV_CODEC_ID_H264:          return MPP_VIDEO_CodingAVC;
-    case AV_CODEC_ID_HEVC:          return MPP_VIDEO_CodingHEVC;
-    case AV_CODEC_ID_VP8:           return MPP_VIDEO_CodingVP8;
-    default:                        return MPP_VIDEO_CodingUnused;
-    }
-}
-
-static MppFrameFormat rkmpp_get_mppformat(enum AVPixelFormat avformat)
-{
-    switch (avformat) {
-    case AV_PIX_FMT_NV12:           return MPP_FMT_YUV420SP;
-    case AV_PIX_FMT_YUV420P:        return MPP_FMT_YUV420P;
-    case AV_PIX_FMT_YUYV422:        return MPP_FMT_YUV422_YUYV;
-    case AV_PIX_FMT_UYVY422:        return MPP_FMT_YUV422_UYVY;
-    case AV_PIX_FMT_P010:           return MPP_FMT_YUV420SP_10BIT;
-    case AV_PIX_FMT_NV16:           return MPP_FMT_YUV422SP;
-    default:                        return -1;
-    }
-}
 
 av_cold int avrkmpp_close_encoder(AVCodecContext *avctx)
 {
@@ -91,10 +69,6 @@ static av_cold void rkmpp_release_encoder(void *opaque, uint8_t *data)
     }
 
     av_free(encoder);
-
-    if (opaque) {
-        av_free(opaque);
-    }
 }
 
 static av_cold int rkmpp_preg_config(AVCodecContext *avctx, RKMPPEncoder *encoder,
@@ -110,10 +84,7 @@ static av_cold int rkmpp_preg_config(AVCodecContext *avctx, RKMPPEncoder *encode
     prep_cfg->height        = avctx->height;
     prep_cfg->hor_stride    = FFALIGN(avctx->width, 16);
     prep_cfg->ver_stride    = FFALIGN(avctx->height, 16);
-    prep_cfg->format        = rkmpp_get_mppformat(
-        avctx->hw_frames_ctx
-        ?((AVHWFramesContext *)avctx->hw_frames_ctx->data)->sw_format
-        :avctx->pix_fmt);
+    prep_cfg->format        = encoder->format->mpp;
     prep_cfg->rotation      = MPP_ENC_ROT_0;
 
     ret = encoder->mpi->control(encoder->ctx, MPP_ENC_SET_PREP_CFG, prep_cfg);
@@ -274,62 +245,85 @@ static av_cold int rkmpp_codec_config(AVCodecContext *avctx, RKMPPEncoder *encod
     return 0;
 }
 
+static int fill_extradata(AVCodecContext *avctx, MppPacket packet) {
+    /* get and write sps/pps for H.264 */
+    void *ptr   = mpp_packet_get_pos(packet);
+    size_t len  = mpp_packet_get_length(packet);
+
+    if (avctx->extradata && avctx->extradata_size != len) {
+        av_free(avctx->extradata);
+        avctx->extradata = NULL;
+    }
+    if (!avctx->extradata)
+        avctx->extradata = av_malloc(len);
+    if (!avctx->extradata)
+        return AVERROR(ENOMEM);
+
+    avctx->extradata_size = len;
+    memcpy(avctx->extradata, ptr, len);
+    return 0;
+}
+
 av_cold int avrkmpp_init_encoder(AVCodecContext *avctx)
 {
     int ret;
     MppCodingType codectype;
     RKMPPEncodeContext *rk_context;
     RKMPPEncoder *encoder;
-    MppEncPrepCfg *prep_cfg;
     MppEncRcCfg rc_cfg;
     MppEncCodecCfg codec_cfg;
     RK_S64 paramS64;
     MppEncSeiMode sei_mode;
+    enum AVPixelFormat sw_format;
+    const rkformat *rkformat;
+    const AVPixFmtDescriptor *fmt_desc;
     RK_U8 enc_hdr_buf[SZ_1K];
     RK_S32 enc_hdr_buf_size = SZ_1K;
     MppPacket packet = NULL;
 
-    if (avctx->hw_frames_ctx)
-        av_log(avctx, AV_LOG_VERBOSE, "hw_frames_ctx->data=%p sw_format=%d(%s)\n", avctx->hw_frames_ctx->data,
-            ((AVHWFramesContext*)avctx->hw_frames_ctx->data)->sw_format,
-            av_get_pix_fmt_name(((AVHWFramesContext*)avctx->hw_frames_ctx->data)->sw_format));
+    if (!avctx->hw_frames_ctx || avctx->pix_fmt != AV_PIX_FMT_DRM_PRIME) {
+        av_log(avctx, AV_LOG_ERROR, "MPP encoder only supports DRM frame! Add a 'scale_rga' filter may fix this.\n");
+        return AVERROR(EINVAL);
+    }
+    sw_format = ((AVHWFramesContext *)avctx->hw_frames_ctx->data)->sw_format;
+    fmt_desc = av_pix_fmt_desc_get(sw_format);
+    av_log(avctx, AV_LOG_VERBOSE, "hw_frames_ctx->data=%p sw_format=%d(%s)\n", avctx->hw_frames_ctx->data,
+        sw_format, fmt_desc->name);
 
     rk_context = avctx->priv_data;
     rk_context->encoder_ref = NULL;
-    prep_cfg = av_mallocz(sizeof(MppEncPrepCfg));
-    if (!prep_cfg) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-    rk_context->prep_cfg = prep_cfg;
-    codectype = rkmpp_get_codingtype(avctx);
+    codectype = rkmpp_get_codingtype(avctx->codec_id);
     if (codectype == MPP_VIDEO_CodingUnused) {
         av_log(avctx, AV_LOG_ERROR, "Unsupport codec type (%d).\n", avctx->codec_id);
-        ret = AVERROR_UNKNOWN;
-        goto fail;
+        return AVERROR_UNKNOWN;
     }
 
     ret = mpp_check_support_format(MPP_CTX_ENC, codectype);
     if (ret != MPP_OK) {
-        av_log(avctx, AV_LOG_ERROR, "Codec type (%d) unsupported by MPP\n", avctx->codec_id);
-        ret = AVERROR_UNKNOWN;
-        goto fail;
+        av_log(avctx, AV_LOG_ERROR, "Codec type (%d) unsupported by MPP encoding\n", avctx->codec_id);
+        return AVERROR_UNKNOWN;
+    }
+
+    rkformat = rkmpp_get_av_format(sw_format);
+    if (!rkformat) {
+        av_log(avctx, AV_LOG_ERROR, "Unsupport pix format %d(%s).\n", sw_format, fmt_desc->name);
+        return AVERROR_UNKNOWN;
     }
 
     // create a encoder and a ref to it
     encoder = av_mallocz(sizeof(RKMPPEncoder));
     if (!encoder) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
+        return AVERROR(ENOMEM);
     }
+    encoder->format = rkformat;
+    encoder->fmt_desc = fmt_desc;
 
     rk_context->encoder_ref =
         av_buffer_create((uint8_t *)encoder, sizeof(*encoder),
-                         rkmpp_release_encoder, prep_cfg, AV_BUFFER_FLAG_READONLY);
+                         rkmpp_release_encoder, NULL, AV_BUFFER_FLAG_READONLY);
     if (!rk_context->encoder_ref) {
         av_free(encoder);
-        ret = AVERROR(ENOMEM);
-        goto fail;
+        return AVERROR(ENOMEM);
     }
 
     av_log(avctx, AV_LOG_DEBUG, "Initializing RKMPP encoder.\n");
@@ -350,7 +344,7 @@ av_cold int avrkmpp_init_encoder(AVCodecContext *avctx)
     }
 
     // mpp setup
-    ret = rkmpp_preg_config(avctx, encoder, prep_cfg);
+    ret = rkmpp_preg_config(avctx, encoder, &encoder->prep_cfg);
     if (ret)
         goto fail;
 
@@ -404,23 +398,10 @@ av_cold int avrkmpp_init_encoder(AVCodecContext *avctx)
         goto fail;
     }
 
-    /* get and write sps/pps for H.264 */
-    void *ptr   = mpp_packet_get_pos(packet);
-    size_t len  = mpp_packet_get_length(packet);
-
-    if (avctx->extradata != NULL && avctx->extradata_size != len) {
-        av_free(avctx->extradata);
-        avctx->extradata = NULL;
-    }
-    if (!avctx->extradata)
-        avctx->extradata = av_malloc(len);
-    if (avctx->extradata == NULL) {
-        ret = AVERROR(ENOMEM);
+    ret = fill_extradata(avctx, packet);
+    if (ret) {
         goto fail;
     }
-    avctx->extradata_size = len;
-    memcpy(avctx->extradata, ptr, len);
-
     packet = NULL;
 
     av_log(avctx, AV_LOG_DEBUG, "RKMPP encoder initialized successfully.\n");
@@ -430,9 +411,6 @@ av_cold int avrkmpp_init_encoder(AVCodecContext *avctx)
 fail:
     av_log(avctx, AV_LOG_ERROR, "Failed to initialize RKMPP encoder.\n");
     avrkmpp_close_encoder(avctx);
-    if (prep_cfg) {
-        av_free(prep_cfg);
-    }
     return ret;
 }
 
@@ -440,7 +418,6 @@ static int rkmpp_queue_frame(AVCodecContext *avctx, RKMPPEncoder *encoder, MppEn
                              const AVFrame *avframe, MppFrame *out_frame)
 {
     int ret;
-    MppFrameFormat mppformat;
     MppCtx ctx;
     MppApi *mpi;
     MppBuffer buffer = NULL;
@@ -449,20 +426,12 @@ static int rkmpp_queue_frame(AVCodecContext *avctx, RKMPPEncoder *encoder, MppEn
     MppTask task = NULL;
     RK_S32 hor_stride;
     RK_S32 ver_stride;
+    MppFrameFormat mppformat = encoder->format->mpp;
 
     // check format
     if (avframe) {
-        enum AVPixelFormat swformat;
         if(avframe->format != AV_PIX_FMT_DRM_PRIME) {
             av_log(avctx, AV_LOG_ERROR, "RKMPPEncoder only support fmt DRM\n");
-            return AVERROR(EINVAL);
-        }
-        swformat    = ((AVHWFramesContext*)avframe->hw_frames_ctx->data)->sw_format;
-        av_log(avctx, AV_LOG_DEBUG, "hw_frames_ctx->data=%p sw_format=%d\n", avframe->hw_frames_ctx->data,
-            ((AVHWFramesContext*)avframe->hw_frames_ctx->data)->sw_format);
-        mppformat   = rkmpp_get_mppformat(swformat);
-        if (mppformat < 0) {
-            av_log(avctx, AV_LOG_ERROR, "Unsupport av format %d\n", swformat);
             return AVERROR(EINVAL);
         }
     }
@@ -578,7 +547,7 @@ static int rkmpp_send_frame(AVCodecContext *avctx, const AVFrame *frame,
             return AVERROR_UNKNOWN;
         }
     }
-    ret = rkmpp_queue_frame(avctx, encoder, (MppEncPrepCfg *)rk_context->prep_cfg, frame, mpp_frame);
+    ret = rkmpp_queue_frame(avctx, encoder, (MppEncPrepCfg *)&encoder->prep_cfg, frame, mpp_frame);
     if (ret && ret != AVERROR(EAGAIN))
         av_log(avctx, AV_LOG_ERROR, "Failed to send frame to encoder (code = %d)\n", ret);
 
