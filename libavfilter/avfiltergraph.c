@@ -30,6 +30,7 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/hwcontext.h"
 
 #define FF_INTERNAL_FIELDS 1
 #include "framequeue.h"
@@ -606,19 +607,21 @@ static int pick_format(AVFilterLink *link, AVFilterLink *ref)
     if (link->type == AVMEDIA_TYPE_VIDEO) {
         if(ref && ref->type == AVMEDIA_TYPE_VIDEO){
             //FIXME: This should check for AV_PIX_FMT_FLAG_ALPHA after PAL8 pixel format without alpha is implemented
-            AVPixFmtDescriptor *ref_desc= av_pix_fmt_desc_get(ref->format);
-            int has_alpha= ref_desc->nb_components % 2 == 0;
-            enum AVPixelFormat best= AV_PIX_FMT_NONE;
+            int has_alpha;
             int i;
+            enum AVPixelFormat src = ref->format;
+            enum AVPixelFormat best= AV_PIX_FMT_NONE;
+            if (ref->hw_frames_ctx) {
+                src = ((AVHWFramesContext*)ref->hw_frames_ctx->data)->sw_format;
+            }
+            has_alpha= av_pix_fmt_desc_get(src)->nb_components % 2 == 0;
             for (i = 0; i < link->incfg.formats->nb_formats; i++) {
                 enum AVPixelFormat p = link->incfg.formats->formats[i];
-                best= av_find_best_pix_fmt_of_2(best, p, ref->format, has_alpha, NULL);
-                if (best != AV_PIX_FMT_NONE && ref_desc->flags & AV_PIX_FMT_FLAG_HWACCEL)
-                    break;
+                best= av_find_best_pix_fmt_of_2(best, p, src, has_alpha, NULL);
             }
             av_log(link->src,AV_LOG_DEBUG, "picking %s out of %d ref:%s alpha:%d\n",
                    av_get_pix_fmt_name(best), link->incfg.formats->nb_formats,
-                   av_get_pix_fmt_name(ref->format), has_alpha);
+                   av_get_pix_fmt_name(src), has_alpha);
             link->incfg.formats->formats[0] = best;
         }
     } else if (link->type == AVMEDIA_TYPE_AUDIO) {

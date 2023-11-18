@@ -43,11 +43,18 @@ typedef struct ScaleRGAContext {
     int force_divisible_by;
 
     int down_scale_only;
+
+    char *pix_fmt;
+    int hdr2sdr;
 } ScaleRGAContext;
 
 #include "libavfilter/avfilter.h"
 
+int avrkmpp_scale_rga_query_formats(AVFilterContext *);
+
 int avrkmpp_scale_rga_filter_frame(AVFilterLink *, AVFrame *, AVFrame **);
+
+int avrkmpp_scale_rga_config_input(AVFilterLink *);
 
 int avrkmpp_scale_rga_config_output(AVFilterLink *);
 

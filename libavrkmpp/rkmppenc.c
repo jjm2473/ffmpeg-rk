@@ -286,6 +286,10 @@ av_cold int avrkmpp_init_encoder(AVCodecContext *avctx)
         return AVERROR(EINVAL);
     }
     sw_format = ((AVHWFramesContext *)avctx->hw_frames_ctx->data)->sw_format;
+    if (AV_PIX_FMT_YUV420SPRK10 == sw_format) {
+        av_log(avctx, AV_LOG_ERROR, "MPP encoder does not support 10bit!\n");
+        return AVERROR(EINVAL);
+    }
     fmt_desc = av_pix_fmt_desc_get(sw_format);
     av_log(avctx, AV_LOG_VERBOSE, "hw_frames_ctx->data=%p sw_format=%d(%s)\n", avctx->hw_frames_ctx->data,
         sw_format, fmt_desc->name);
@@ -309,6 +313,7 @@ av_cold int avrkmpp_init_encoder(AVCodecContext *avctx)
         av_log(avctx, AV_LOG_ERROR, "Unsupport pix format %d(%s).\n", sw_format, fmt_desc->name);
         return AVERROR_UNKNOWN;
     }
+    avctx->pix_fmt = sw_format;
 
     // create a encoder and a ref to it
     encoder = av_mallocz(sizeof(RKMPPEncoder));

@@ -12,8 +12,8 @@
 // rkmpp/mpp/vproc/rga/rga.cpp rga_fmt_map
 static const rkformat rkformats[RK_FORMAT_NR+1] = {
         { .av = AV_PIX_FMT_NV12,    .mpp = MPP_FMT_YUV420SP,        .drm = DRM_FORMAT_NV12,     .rga = RK_FORMAT_YCbCr_420_SP},
+        { .av = AV_PIX_FMT_YUV420SPRK10, .mpp = MPP_FMT_YUV420SP_10BIT, .drm = DRM_FORMAT_NV15, .rga = RK_FORMAT_YCbCr_420_SP_10B},
         { .av = AV_PIX_FMT_NV16,    .mpp = MPP_FMT_YUV422SP,        .drm = DRM_FORMAT_NV16,     .rga = RK_FORMAT_YCbCr_422_SP},
-        { .av = AV_PIX_FMT_P010,    .mpp = MPP_FMT_YUV420SP_10BIT,  .drm = DRM_FORMAT_P010,     .rga = RK_FORMAT_YCbCr_420_SP_10B},
         { .av = AV_PIX_FMT_YUV420P, .mpp = MPP_FMT_YUV420P,         .drm = DRM_FORMAT_YUV420,   .rga = RK_FORMAT_YCbCr_420_P},
         { .av = AV_PIX_FMT_YUV422P, .mpp = MPP_FMT_YUV422P,         .drm = DRM_FORMAT_YUV422,   .rga = RK_FORMAT_YCbCr_422_P},
         { .av = AV_PIX_FMT_YUYV422, .mpp = MPP_FMT_YUV422_YUYV,     .drm = DRM_FORMAT_YUYV,     .rga = RK_FORMAT_YUYV_422},

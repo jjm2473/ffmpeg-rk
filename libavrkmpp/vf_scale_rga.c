@@ -36,7 +36,7 @@
 #include "video.h"
 
 #include "avrkmpp.h"
-#include "rkformat.h"
+#include "rkrga.h"
 
 #include <rga/RgaApi.h>
 
@@ -50,6 +50,7 @@ typedef struct ScaleRGA {
     const rkformat *in_fmt;
     const rkformat *out_fmt;
     rga_rect_t output;
+    int color_space_mode;
     int passthrough;
 
     MppBufferGroup frame_group;
@@ -68,35 +69,16 @@ static int ff_rga_vpp_config_output(AVFilterLink *outlink)
     AVFilterLink *inlink   = avctx->inputs[0];
     ScaleRGAContext *ctx   = avctx->priv;
     ScaleRGA *filter = (ScaleRGA *)ctx->filter_ref->data;
-    rga_rect_t *rect = &filter->output;
-    AVHWFramesContext *output_frames;
     int err;
 
-    filter->hwframes_ref = av_hwframe_ctx_alloc(filter->device_ref);
-    if (!filter->hwframes_ref) {
-        av_log(ctx, AV_LOG_ERROR, "Failed to create HW frame context "
-               "for output.\n");
-        return AVERROR(ENOMEM);
-    }
-
-    output_frames = (AVHWFramesContext*)filter->hwframes_ref->data;
-
-    output_frames->format    = AV_PIX_FMT_DRM_PRIME;
-    output_frames->sw_format = filter->out_fmt->av;
-    output_frames->width     = rect->width;
-    output_frames->height    = rect->height;
-
-    err = av_hwframe_ctx_init(filter->hwframes_ref);
-    if (err < 0) {
-        av_log(ctx, AV_LOG_ERROR, "Failed to initialise RGA frame "
-               "context for output: %d\n", err);
-        goto fail;
-    }
-
-    outlink->hw_frames_ctx = av_buffer_ref(filter->hwframes_ref);
-    if (!outlink->hw_frames_ctx) {
-        err = AVERROR(ENOMEM);
-        goto fail;
+    filter->color_space_mode = 0;
+    if (ctx->hdr2sdr) {
+        filter->color_space_mode = ff_rga_config_hdr2sdr(filter->in_fmt->rga, filter->out_fmt->rga);
+        if (filter->color_space_mode) {
+            av_log(ctx, AV_LOG_VERBOSE, "HDR to SDR mode %x\n", filter->color_space_mode);
+        } else {
+            av_log(ctx, AV_LOG_VERBOSE, "Unsupported or does not require HDR to SDR conversion\n");
+        }
     }
 
     if (!inlink->hw_frames_ctx) {
@@ -129,77 +111,30 @@ static int ff_rga_vpp_config_output(AVFilterLink *outlink)
 
 fail:
     av_frame_free(&filter->sw_frame);
-    av_buffer_unref(&filter->hwframes_ref);
     return err;
 }
 
-static float get_bpp_from_rga_format(uint32_t rga_fmt) {
-    // copy from librga/core/RgaUtils.cpp get_bpp_from_format
-    // actually we only use RK_FORMAT_YCbCr_420_SP in this project
-    switch(rga_fmt) {
-        case RK_FORMAT_YCbCr_400:
-            return 1.0;
-        case RK_FORMAT_YCbCr_420_SP:
-        case RK_FORMAT_YCbCr_420_P:
-        case RK_FORMAT_YCrCb_420_P:
-        case RK_FORMAT_YCrCb_420_SP:
-            return 1.5;
-        case RK_FORMAT_RGB_565:
-        case RK_FORMAT_RGBA_5551:
-        case RK_FORMAT_RGBA_4444:
-        case RK_FORMAT_BGR_565:
-        case RK_FORMAT_BGRA_5551:
-        case RK_FORMAT_BGRA_4444:
-        case RK_FORMAT_ARGB_5551:
-        case RK_FORMAT_ARGB_4444:
-        case RK_FORMAT_ABGR_5551:
-        case RK_FORMAT_ABGR_4444:
-        case RK_FORMAT_YCbCr_422_SP:
-        case RK_FORMAT_YCbCr_422_P:
-        case RK_FORMAT_YCrCb_422_SP:
-        case RK_FORMAT_YCrCb_422_P:
-        /* yuyv */
-        case RK_FORMAT_YVYU_422:
-        case RK_FORMAT_VYUY_422:
-        case RK_FORMAT_YUYV_422:
-        case RK_FORMAT_UYVY_422:
-        case RK_FORMAT_YVYU_420:
-        case RK_FORMAT_VYUY_420:
-        case RK_FORMAT_YUYV_420:
-        case RK_FORMAT_UYVY_420:
-
-        case RK_FORMAT_YCbCr_420_SP_10B:
-        case RK_FORMAT_YCrCb_420_SP_10B:
-            return 2.0;
-        case RK_FORMAT_YCbCr_422_10b_SP:
-        case RK_FORMAT_YCrCb_422_10b_SP:
-            return 2.5;
-        case RK_FORMAT_BGR_888:
-        case RK_FORMAT_RGB_888:
-            return 3.0;
-        case RK_FORMAT_RGBA_8888:
-        case RK_FORMAT_RGBX_8888:
-        case RK_FORMAT_BGRA_8888:
-        case RK_FORMAT_BGRX_8888:
-        case RK_FORMAT_ARGB_8888:
-        case RK_FORMAT_XRGB_8888:
-        case RK_FORMAT_ABGR_8888:
-        case RK_FORMAT_XBGR_8888:
-            return 4.0;
-        default:
-            av_log(NULL, AV_LOG_WARNING, "unknown RGA format %d\n", rga_fmt);
-            return 2.0;
-    }
-}
-
-int avrkmpp_scale_rga_config_output(AVFilterLink *outlink)
+int avrkmpp_scale_rga_config_input(AVFilterLink *inlink)
 {
-    AVFilterLink *inlink     = outlink->src->inputs[0];
-    AVFilterContext *avctx   = outlink->src;
+    int ret;
+    AVFilterContext *avctx   = inlink->dst;
     ScaleRGAContext *ctx   = avctx->priv;
     ScaleRGA *filter = (ScaleRGA *)ctx->filter_ref->data;
     rga_rect_t *rect = &filter->output;
-    int err;
+    AVHWFramesContext *output_frames = (AVHWFramesContext*)filter->hwframes_ref->data;;
+
+    av_log(avctx, AV_LOG_DEBUG, "avrkmpp_scale_rga_config_input\n");
+
+    if (inlink->hw_frames_ctx) {
+        filter->in_fmt = rkmpp_get_av_format(((AVHWFramesContext*)inlink->hw_frames_ctx->data)->sw_format);
+    } else {
+        filter->in_fmt = rkmpp_get_av_format(inlink->format);
+    }
+
+    if (!filter->in_fmt) {
+        av_log(ctx, AV_LOG_ERROR, "Unknown input pix format!\n");
+        return AVERROR(EINVAL);
+    }
 
     rect->width = ctx->width >> 1 << 1;
     rect->height = ctx->height >> 1 << 1;
@@ -211,27 +146,39 @@ int avrkmpp_scale_rga_config_output(AVFilterLink *outlink)
     rect->xoffset = 0;
     rect->yoffset = 0;
 
+    output_frames->width     = rect->width;
+    output_frames->height    = rect->height;
+
+    ret = av_hwframe_ctx_init(filter->hwframes_ref);
+    if (ret < 0) {
+        av_log(ctx, AV_LOG_ERROR, "Failed to initialise RGA frame "
+               "context for output: %d\n", ret);
+        return ret;
+    }
+
+    return 0;
+}
+
+int avrkmpp_scale_rga_config_output(AVFilterLink *outlink)
+{
+    AVFilterLink *inlink     = outlink->src->inputs[0];
+    AVFilterContext *avctx   = outlink->src;
+    ScaleRGAContext *ctx   = avctx->priv;
+    ScaleRGA *filter = (ScaleRGA *)ctx->filter_ref->data;
+    rga_rect_t *rect = &filter->output;
+    int err;
+
+    av_log(avctx, AV_LOG_DEBUG, "avrkmpp_scale_rga_config_output\n");
+
     outlink->w = rect->width;
     outlink->h = rect->height;
     outlink->format = AV_PIX_FMT_DRM_PRIME;
 
     av_buffer_unref(&filter->hwframes_ref);
 
-    filter->out_fmt = rkmpp_get_av_format(AV_PIX_FMT_NV12);
-
-    if (inlink->hw_frames_ctx) {
-        filter->in_fmt = rkmpp_get_av_format(((AVHWFramesContext*)inlink->hw_frames_ctx->data)->sw_format);
-    } else {
-        filter->in_fmt = rkmpp_get_av_format(inlink->format);
-    }
-
-    if (!filter->out_fmt || !filter->in_fmt) {
-        av_log(ctx, AV_LOG_ERROR, "Unknown pix format!\n");
-        return AVERROR(EINVAL);
-    }
-
     av_log(ctx, AV_LOG_VERBOSE, "%s, %dx%d => %s, %dx%d\n",
-        av_get_pix_fmt_name(filter->in_fmt->av), inlink->w, inlink->h,
+        filter->in_fmt->av == AV_PIX_FMT_YUV420SPRK10 ? "yuv420sp10rk" : av_get_pix_fmt_name(filter->in_fmt->av),
+        inlink->w, inlink->h,
         av_get_pix_fmt_name(filter->out_fmt->av), outlink->w, outlink->h);
 
     filter->passthrough = 0;
@@ -245,7 +192,6 @@ int avrkmpp_scale_rga_config_output(AVFilterLink *outlink)
     } else if ((err = ff_rga_vpp_config_output(outlink)) < 0) {
         return err;
     }
-    rect->format = filter->out_fmt->rga;
     rect->size = rect->wstride * rect->hstride * get_bpp_from_rga_format(rect->format);
 
     return 0;
@@ -289,7 +235,7 @@ int avrkmpp_scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame, A
         desc = (AVDRMFrameDescriptor*)input_frame->data[0];
         layer = &desc->layers[0];
         rga_set_rect(&src_info.rect, 0, 0, input_frame->width >> 1 << 1, input_frame->height >> 1 << 1,
-            layer->planes[0].pitch,
+            (int)(get_ppb_plane0_from_rga_format(filter->in_fmt->rga) * layer->planes[0].pitch),
             layer->nb_planes > 1?(layer->planes[1].offset / layer->planes[0].pitch):input_frame->height,
             filter->in_fmt->rga);
         src_info.fd = desc->objects[0].fd;
@@ -340,6 +286,7 @@ int avrkmpp_scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame, A
     dst_info.fd = mpp_buffer_get_fd(buffer);
     dst_info.mmuFlag = 1;
     memcpy(&dst_info.rect, rect, sizeof(rga_rect_t));
+    dst_info.color_space_mode = filter->color_space_mode;
 
     if ((err = c_RkRgaBlit(&src_info, &dst_info, NULL)) < 0) {
         av_log(ctx, AV_LOG_ERROR, "RGA failed (code = %d)\n", err);
@@ -360,15 +307,32 @@ int avrkmpp_scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame, A
     desc->nb_layers = 1;
     layer = &desc->layers[0];
     layer->format = filter->out_fmt->drm;
-    layer->nb_planes = 2;
-
     layer->planes[0].object_index = 0;
     layer->planes[0].offset = 0;
     layer->planes[0].pitch = rect->wstride;
 
-    layer->planes[1].object_index = 0;
-    layer->planes[1].offset = layer->planes[0].pitch * rect->hstride;
-    layer->planes[1].pitch = layer->planes[0].pitch;
+    switch (filter->out_fmt->rga)
+    {
+    case RK_FORMAT_YCbCr_420_SP_10B:
+        layer->planes[0].pitch = layer->planes[0].pitch * 10 / 8;
+        // fallthrough
+    case RK_FORMAT_YCbCr_420_SP:
+    case RK_FORMAT_YCbCr_422_SP:
+    case RK_FORMAT_YCbCr_420_P:
+    case RK_FORMAT_YCbCr_422_P:
+        layer->nb_planes = 2;
+        break;
+    default:
+        layer->planes[0].pitch = ceil(get_bpp_from_rga_format(filter->out_fmt->rga) * layer->planes[0].pitch);
+        layer->nb_planes = 1;
+        break;
+    }
+
+    if (layer->nb_planes > 1) {
+        layer->planes[1].object_index = 0;
+        layer->planes[1].offset = layer->planes[0].pitch * rect->hstride;
+        layer->planes[1].pitch = layer->planes[0].pitch;
+    }
 
     // frame group needs to be closed only when all frames have been released.
     framecontext = (RGAFrameContext *)av_mallocz(sizeof(RGAFrameContext));
@@ -389,6 +353,13 @@ int avrkmpp_scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame, A
     err = av_frame_copy_props(output_frame, input_frame);
     if (err < 0)
         goto fail;
+
+    if (filter->color_space_mode) {
+        output_frame->color_primaries = AVCOL_PRI_BT709;
+        output_frame->color_trc = AVCOL_TRC_BT709;
+        output_frame->colorspace = AVCOL_SPC_BT709;
+        output_frame->color_range = AVCOL_RANGE_JPEG;
+    }
 
     // setup general frame fields
     output_frame->format           = AV_PIX_FMT_DRM_PRIME;
@@ -445,16 +416,18 @@ static av_cold void rkmpp_release_filter(void *opaque, uint8_t *data)
     }
     av_buffer_unref(&filter->frame_group_ref);
     av_buffer_unref(&filter->hwframes_ref);
-    av_buffer_unref(&filter->device_ref);
     av_free(filter);
 }
 
 av_cold int avrkmpp_scale_rga_init(AVFilterContext *avctx)
 {
     int ret;
+    enum AVPixelFormat pix_fmt;
+    AVHWFramesContext *output_frames;
     ScaleRGA *filter;
     ScaleRGAContext *ctx   = avctx->priv;
     ctx->filter_ref = NULL;
+    av_log(avctx, AV_LOG_DEBUG, "avrkmpp_scale_rga_init\n");
 
     filter = av_mallocz(sizeof(ScaleRGA));
     if (!filter) {
@@ -468,6 +441,25 @@ av_cold int avrkmpp_scale_rga_init(AVFilterContext *avctx)
         av_free(filter);
         return AVERROR(ENOMEM);
     }
+
+    if (ctx->pix_fmt) {
+        pix_fmt = av_get_pix_fmt(ctx->pix_fmt);
+        if (pix_fmt == AV_PIX_FMT_NONE) {
+            av_log(ctx, AV_LOG_ERROR, "Unknown pix format %s!\n", ctx->pix_fmt);
+            ret = AVERROR(EINVAL);
+            goto fail;
+        }
+    } else {
+        pix_fmt = AV_PIX_FMT_NV12;
+    }
+    filter->out_fmt = rkmpp_get_av_format(pix_fmt);
+    if (!filter->out_fmt) {
+        av_log(ctx, AV_LOG_ERROR, "Unsupported pix format %s!\n", ctx->pix_fmt?ctx->pix_fmt:"");
+        ret = AVERROR(EINVAL);
+        goto fail;
+    }
+
+    filter->output.format = filter->out_fmt->rga;
 
     if (ret = mpp_buffer_group_get_internal(&filter->frame_group, MPP_BUFFER_TYPE_DRM | MPP_BUFFER_FLAGS_DMA32)) {
         av_log(ctx, AV_LOG_ERROR, "Failed to get buffer group (code = %d)\n", ret);
@@ -483,26 +475,57 @@ av_cold int avrkmpp_scale_rga_init(AVFilterContext *avctx)
         goto fail;
     }
 
-    filter->output.format = RK_FORMAT_UNKNOWN;
-
-    filter->device_ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_DRM);
-    if (!filter->device_ref) {
+    avctx->hw_device_ctx = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_DRM);
+    if (!avctx->hw_device_ctx) {
+        av_log(ctx, AV_LOG_ERROR, "Failed to create HW device context "
+               "for output.\n");
         ret = AVERROR(ENOMEM);
         goto fail;
     }
 
-    ret = av_hwdevice_ctx_init(filter->device_ref);
+    ret = av_hwdevice_ctx_init(avctx->hw_device_ctx);
     if (ret < 0)
         goto fail;
 
+    filter->hwframes_ref = av_hwframe_ctx_alloc(avctx->hw_device_ctx);
+    if (!filter->hwframes_ref) {
+        av_log(ctx, AV_LOG_ERROR, "Failed to create HW frame context "
+               "for output.\n");
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
+
+    output_frames = (AVHWFramesContext*)filter->hwframes_ref->data;
+
+    output_frames->format    = AV_PIX_FMT_DRM_PRIME;
+    output_frames->sw_format = filter->out_fmt->av;
+    output_frames->width     = FFALIGN(ctx->width, 16);
+    output_frames->height    = FFALIGN(ctx->height, 2);
+
     return 0;
 fail:
+    av_buffer_unref(&filter->hwframes_ref);
     av_buffer_unref(&ctx->filter_ref);
     return ret;
+}
+
+int avrkmpp_scale_rga_query_formats(AVFilterContext *avctx) {
+    ScaleRGAContext *ctx   = avctx->priv;
+    ScaleRGA *filter = (ScaleRGA *)ctx->filter_ref->data;
+    av_log(avctx, AV_LOG_DEBUG, "avrkmpp_scale_rga_query_formats\n");
+    avctx->outputs[0]->hw_frames_ctx = av_buffer_ref(filter->hwframes_ref);
+    if (!avctx->outputs[0]->hw_frames_ctx) {
+        return AVERROR(ENOMEM);
+    }
+    return 0;
 }
 
 void avrkmpp_scale_rga_uninit(AVFilterContext *avctx)
 {
     ScaleRGAContext *ctx   = avctx->priv;
+    av_log(avctx, AV_LOG_DEBUG, "avrkmpp_scale_rga_uninit\n");
+    if (avctx->outputs && avctx->outputs[0]) {
+        av_buffer_unref(&avctx->outputs[0]->hw_frames_ctx);
+    }
     av_buffer_unref(&ctx->filter_ref);
 }

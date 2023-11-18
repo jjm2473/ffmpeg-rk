@@ -325,7 +325,7 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
         AVHWFramesContext *hwframes;
         const rkformat *rkformat;
 
-        av_log(avctx, AV_LOG_INFO, "Decoder noticed an info change (%dx%d), stride(%dx%d), format=%d\n",
+        av_log(avctx, AV_LOG_INFO, "Decoder noticed an info change (%dx%d), stride(%dx%d), format=0x%x\n",
                (int)mpp_frame_get_width(mppframe), (int)mpp_frame_get_height(mppframe),
                (int)mpp_frame_get_hor_stride(mppframe), (int)mpp_frame_get_ver_stride(mppframe), 
                (int)mpp_frame_get_fmt(mppframe));

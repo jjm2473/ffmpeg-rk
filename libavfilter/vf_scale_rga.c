@@ -6,6 +6,7 @@
 
 #include "libavrkmpp/avrkmpp.h"
 #include "libavutil/parseutils.h"
+#include "libavutil/pixdesc.h"
 #include "internal.h"
 #include "scale_eval.h"
 
@@ -17,7 +18,7 @@ static int scale_rga_query_formats(AVFilterContext *avctx) {
         AV_PIX_FMT_YUV420P,
         AV_PIX_FMT_NV12,
         // AV_PIX_FMT_P010,
-        // AV_PIX_FMT_NV16,
+        AV_PIX_FMT_NV16,
         AV_PIX_FMT_YUYV422,
         AV_PIX_FMT_UYVY422,
         AV_PIX_FMT_RGBA,
@@ -47,7 +48,7 @@ static int scale_rga_query_formats(AVFilterContext *avctx) {
                               &avctx->outputs[0]->incfg.formats)) < 0)
         return err;
 
-    return 0;
+    return avrkmpp_scale_rga_query_formats(avctx);
 }
 
 static int scale_rga_filter_frame_l(AVFilterLink *inlink, AVFrame *input_frame) {
@@ -61,15 +62,19 @@ static int scale_rga_filter_frame_l(AVFilterLink *inlink, AVFrame *input_frame) 
     return ret;
 }
 
-static int scale_rga_config_output_l(AVFilterLink *outlink) {
+static int scale_rga_config_input_l(AVFilterLink *inlink) {
     int err;
-    AVFilterContext *avctx = outlink->src;
-    AVFilterLink *inlink   = outlink->src->inputs[0];
+    AVFilterContext *avctx = inlink->dst;
     ScaleRGAContext *ctx   = avctx->priv;
+    AVFilterLink dummy_outlink = {0};
+    if (ctx->pix_fmt)
+        dummy_outlink.format = av_get_pix_fmt(ctx->pix_fmt);
+    if (dummy_outlink.format == AV_PIX_FMT_NONE)
+        dummy_outlink.format = AV_PIX_FMT_NV12;
 
     if ((err = ff_scale_eval_dimensions(ctx,
                                         ctx->w_expr, ctx->h_expr,
-                                        inlink, outlink,
+                                        inlink, &dummy_outlink,
                                         &ctx->width, &ctx->height)) < 0)
         return err;
 
@@ -80,6 +85,13 @@ static int scale_rga_config_output_l(AVFilterLink *outlink) {
         ctx->width = inlink->w;
         ctx->height = inlink->h;
     }
+
+    return avrkmpp_scale_rga_config_input(inlink);
+}
+
+static int scale_rga_config_output_l(AVFilterLink *outlink) {
+    int err;
+    AVFilterLink *inlink   = outlink->src->inputs[0];
 
     if ((err = avrkmpp_scale_rga_config_output(outlink)) < 0) {
         return err;
@@ -156,6 +168,8 @@ static const AVOption scale_rga_options[] = {
     { "force_divisible_by", "enforce that the output resolution is divisible by a defined integer when force_original_aspect_ratio is used", 
             OFFSET(force_divisible_by), AV_OPT_TYPE_INT, { .i64 = 1}, 1, 256, FLAGS },
     { "down_scale_only", "do not upscale", OFFSET(down_scale_only), AV_OPT_TYPE_BOOL, { .i64 = 1}, 0, 1, FLAGS },
+    { "format", "pixel format", OFFSET(pix_fmt), AV_OPT_TYPE_STRING, .flags = FLAGS },
+    { "hdr2sdr", "HDR to SDR", OFFSET(hdr2sdr), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
     { NULL },
 };
 
@@ -166,6 +180,7 @@ static const AVFilterPad scale_rga_inputs[] = {
         .name         = "default",
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = &scale_rga_filter_frame_l,
+        .config_props = &scale_rga_config_input_l,
     },
 };
 
