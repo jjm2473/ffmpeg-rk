@@ -155,18 +155,27 @@ static av_cold int rkmpp_rc_config(AVCodecContext *avctx, RKMPPEncoder *encoder,
     /* fix input / output frame rate */
     rc_cfg->fps_in_flex     = 0;
     av_reduce(&rc_cfg->fps_in_num, &rc_cfg->fps_in_denorm,
-                avctx->time_base.den, avctx->time_base.num, 65535);
+                avctx->time_base.den, avctx->time_base.num * avctx->ticks_per_frame, 65535);
 
     rc_cfg->fps_out_flex    = 0;
     if (avctx->framerate.num > 0 && avctx->framerate.den > 0)
         av_reduce(&rc_cfg->fps_out_num, &rc_cfg->fps_out_denorm,
                   avctx->framerate.num, avctx->framerate.den, 65535);
-    else
-        av_reduce(&rc_cfg->fps_out_num, &rc_cfg->fps_out_denorm,
-                  avctx->time_base.den, avctx->time_base.num, 65535);
+    else {
+        rc_cfg->fps_out_num = rc_cfg->fps_in_num;
+        rc_cfg->fps_out_denorm = rc_cfg->fps_in_denorm;
+    }
 
-    rc_cfg->gop             = FFMAX(avctx->gop_size, 1);
+    if (avctx->gop_size >= 0) {
+        rc_cfg->gop         = FFMAX(avctx->gop_size, 1);
+    } else {
+        rc_cfg->gop         = 5 * rc_cfg->fps_out_num / rc_cfg->fps_out_denorm;
+    }
     rc_cfg->skip_cnt        = 0;
+
+    av_log(avctx, AV_LOG_VERBOSE, "framerate %d/%d => %d/%d (I/%d)\n",
+        rc_cfg->fps_in_num, rc_cfg->fps_in_denorm,
+        rc_cfg->fps_out_num, rc_cfg->fps_out_denorm, rc_cfg->gop);
 
     ret = encoder->mpi->control(encoder->ctx, MPP_ENC_SET_RC_CFG, rc_cfg);
     if (ret != MPP_OK) {
