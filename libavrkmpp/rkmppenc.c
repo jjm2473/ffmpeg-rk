@@ -370,7 +370,7 @@ av_cold int avrkmpp_init_encoder(AVCodecContext *avctx)
     if (ret)
         goto fail;
 
-    sei_mode = MPP_ENC_SEI_MODE_ONE_FRAME;
+    sei_mode = MPP_ENC_SEI_MODE_DISABLE;
     ret = encoder->mpi->control(encoder->ctx, MPP_ENC_SET_SEI_CFG, &sei_mode);
     if (ret != MPP_OK) {
         av_log(avctx, AV_LOG_ERROR, "Failed to set sei cfg on MPI (code = %d).\n", ret);
