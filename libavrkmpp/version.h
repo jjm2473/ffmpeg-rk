@@ -11,7 +11,7 @@
 #include "version_major.h"
 
 #define LIBAVRKMPP_VERSION_MINOR 2
-#define LIBAVRKMPP_VERSION_MICRO 0
+#define LIBAVRKMPP_VERSION_MICRO 1
 
 #define LIBAVRKMPP_VERSION_INT AV_VERSION_INT(LIBAVRKMPP_VERSION_MAJOR, \
                                                LIBAVRKMPP_VERSION_MINOR, \

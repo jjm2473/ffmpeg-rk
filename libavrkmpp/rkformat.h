@@ -4,6 +4,7 @@
 #include <rockchip/mpp_frame.h>
 #include <rga/rga.h>
 #include "libavutil/pixfmt.h"
+#include "libavutil/frame.h"
 
 typedef struct {
     enum AVPixelFormat av;
@@ -27,5 +28,7 @@ DEFINE_GETFORMAT(av, enum AVPixelFormat)
  * the P010_10LE/P010_10BE
  */
 #define AV_PIX_FMT_YUV420SPRK10 ((enum AVPixelFormat)-2)
+
+int rkmpp_map_frame(AVFrame *frame, const rkformat *fmt, int fd, size_t size, int pitch0, int vh, void (*free)(void *opaque, uint8_t *data), void *opaque);
 
 #endif

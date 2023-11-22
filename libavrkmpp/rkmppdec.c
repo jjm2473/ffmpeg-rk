@@ -43,7 +43,7 @@ typedef struct {
     AVPacket packet;
     AVBufferRef *frames_ref;
     AVBufferRef *device_ref;
-    uint32_t drm_fmt;
+    const rkformat *fmt;
 
     char print_fps;
 
@@ -216,7 +216,7 @@ int avrkmpp_init_decoder(AVCodecContext *avctx)
     if (ret < 0)
         goto fail;
 
-    decoder->drm_fmt = DRM_FORMAT_INVALID;
+    decoder->fmt = NULL;
     av_log(avctx, AV_LOG_DEBUG, "RKMPP decoder initialized successfully.\n");
 
     return 0;
@@ -279,10 +279,7 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
     int ret;
     MppFrame mppframe = NULL;
     MppBuffer buffer = NULL;
-    AVDRMFrameDescriptor *desc = NULL;
-    AVDRMLayerDescriptor *layer = NULL;
     int mode;
-    MppFrameFormat mppformat;
 
     // should not provide any frame after EOS
     if (decoder->eos)
@@ -323,6 +320,7 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
 
     if (mpp_frame_get_info_change(mppframe)) {
         AVHWFramesContext *hwframes;
+        MppFrameFormat mppformat;
         const rkformat *rkformat;
 
         av_log(avctx, AV_LOG_INFO, "Decoder noticed an info change (%dx%d), stride(%dx%d), format=0x%x\n",
@@ -360,13 +358,15 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
         hwframes = (AVHWFramesContext*)decoder->frames_ref->data;
         hwframes->format    = AV_PIX_FMT_DRM_PRIME;
         hwframes->sw_format = rkformat->av;
-        hwframes->width     = avctx->width;
-        hwframes->height    = avctx->height;
+        hwframes->width     = rkformat->mpp==MPP_FMT_YUV420SP_10BIT?mpp_frame_get_hor_stride(mppframe):avctx->width;
+        hwframes->height    = mpp_frame_get_ver_stride(mppframe);
         ret = av_hwframe_ctx_init(decoder->frames_ref);
         if (!ret) {
-            decoder->drm_fmt = rkformat->drm;
+            decoder->fmt = rkformat;
             ret = AVERROR(EAGAIN);
         }
+        av_buffer_unref(&avctx->hw_frames_ctx);
+        avctx->hw_frames_ctx = av_buffer_ref(decoder->frames_ref);
 
         goto fail;
     }
@@ -385,7 +385,6 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
     rkmpp_update_fps(avctx);
 
     // setup general frame fields
-    frame->format           = AV_PIX_FMT_DRM_PRIME;
     frame->width            = mpp_frame_get_width(mppframe);
     frame->height           = mpp_frame_get_height(mppframe);
     frame->pts              = mpp_frame_get_pts(mppframe);
@@ -398,31 +397,6 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
     mode = mpp_frame_get_mode(mppframe);
     frame->interlaced_frame = ((mode & MPP_FRAME_FLAG_FIELD_ORDER_MASK) == MPP_FRAME_FLAG_DEINTERLACED);
     frame->top_field_first  = ((mode & MPP_FRAME_FLAG_FIELD_ORDER_MASK) == MPP_FRAME_FLAG_TOP_FIRST);
-
-    mppformat = mpp_frame_get_fmt(mppframe);
-
-    desc = av_mallocz(sizeof(AVDRMFrameDescriptor));
-    if (!desc) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-
-    desc->nb_objects = 1;
-    desc->objects[0].fd = mpp_buffer_get_fd(buffer);
-    desc->objects[0].size = mpp_buffer_get_size(buffer);
-
-    desc->nb_layers = 1;
-    layer = &desc->layers[0];
-    layer->format = decoder->drm_fmt;
-    layer->nb_planes = 2;
-
-    layer->planes[0].object_index = 0;
-    layer->planes[0].offset = 0;
-    layer->planes[0].pitch = mpp_frame_get_hor_stride(mppframe);
-
-    layer->planes[1].object_index = 0;
-    layer->planes[1].offset = layer->planes[0].pitch * mpp_frame_get_ver_stride(mppframe);
-    layer->planes[1].pitch = layer->planes[0].pitch;
 
     // we also allocate a struct in buf[0] that will allow to hold additionnal information
     // for releasing properly MPP frames and decoder
@@ -437,14 +411,11 @@ static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
     framecontext->decoder_ref = av_buffer_ref(rk_context->decoder_ref);
     framecontext->frame = mppframe;
 
-    frame->data[0]  = (uint8_t *)desc;
-    frame->buf[0]   = av_buffer_create((uint8_t *)desc, sizeof(*desc), rkmpp_release_frame,
-                                       framecontextref, AV_BUFFER_FLAG_READONLY);
-
-    if (!frame->buf[0]) {
-        ret = AVERROR(ENOMEM);
+    ret = rkmpp_map_frame(frame, decoder->fmt, mpp_buffer_get_fd(buffer), mpp_buffer_get_size(buffer),
+        mpp_frame_get_hor_stride(mppframe), mpp_frame_get_ver_stride(mppframe),
+        rkmpp_release_frame, framecontextref);
+    if (ret)
         goto fail;
-    }
 
     frame->hw_frames_ctx = av_buffer_ref(decoder->frames_ref);
     if (!frame->hw_frames_ctx) {
@@ -463,9 +434,6 @@ fail:
 
     if (framecontextref)
         av_buffer_unref(&framecontextref);
-
-    if (desc)
-        av_free(desc);
 
     return ret;
 }

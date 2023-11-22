@@ -322,7 +322,7 @@ av_cold int avrkmpp_init_encoder(AVCodecContext *avctx)
         av_log(avctx, AV_LOG_ERROR, "Unsupport pix format %d(%s).\n", sw_format, fmt_desc->name);
         return AVERROR_UNKNOWN;
     }
-    avctx->pix_fmt = sw_format;
+    avctx->pix_fmt = AV_PIX_FMT_YUV420P;
 
     // create a encoder and a ref to it
     encoder = av_mallocz(sizeof(RKMPPEncoder));
@@ -458,6 +458,7 @@ static int rkmpp_queue_frame(AVCodecContext *avctx, RKMPPEncoder *encoder, MppEn
     mpp_frame_set_eos(frame, encoder->eos_reached);
 
     if (avframe) {
+        AVHWFramesContext *hwfctx = (AVHWFramesContext*)avframe->hw_frames_ctx->data;
         AVDRMFrameDescriptor *desc = (AVDRMFrameDescriptor*)avframe->data[0];
         AVDRMLayerDescriptor *layer = &desc->layers[0];
 
@@ -465,16 +466,8 @@ static int rkmpp_queue_frame(AVCodecContext *avctx, RKMPPEncoder *encoder, MppEn
         mpp_frame_set_dts(frame, avframe->pkt_dts);
         mpp_frame_set_width(frame, avframe->width);
         mpp_frame_set_height(frame, avframe->height);
-        if (mppformat == MPP_FMT_YUV422_YUYV || mppformat == MPP_FMT_YUV422_UYVY) {
-            hor_stride = 2 * layer->planes[0].pitch;
-        } else {
-            // nv12 or yuv420p
-            hor_stride = layer->planes[0].pitch;
-        }
-        if (layer->nb_planes > 1)
-            ver_stride = layer->planes[1].offset / layer->planes[0].pitch;
-        else
-            ver_stride = avframe->height;
+        hor_stride = layer->planes[0].pitch;
+        ver_stride = hwfctx->height;
 
         if (prep_cfg->hor_stride != hor_stride || prep_cfg->ver_stride != ver_stride) {
             prep_cfg->change = MPP_ENC_PREP_CFG_CHANGE_INPUT;

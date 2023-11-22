@@ -10,7 +10,7 @@ OBJS-codec = rkmppdec.o                                                 \
 
 OBJS-filter-$(CONFIG_LIBRGA) = vf_scale_rga.o                           \
 
-OBJS = $(OBJS-codec) $(OBJS-filter-yes) rkformat.o version.o
+OBJS = $(OBJS-codec) $(OBJS-filter-yes) rkformat.o rkframe.o version.o
 
 $(OBJS-codec:%=$(SUBDIR)%): CFLAGS  += -I$(SRC_LINK)/libavcodec/
 

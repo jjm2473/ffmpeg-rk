@@ -40,8 +40,6 @@
 
 #include <rga/RgaApi.h>
 
-#define RGA_SW_USE_IMAGE_ALLOC
-
 typedef struct ScaleRGA {
     AVBufferRef *frame_group_ref;
 
@@ -58,10 +56,60 @@ typedef struct ScaleRGA {
     AVFrame *sw_frame;
 } ScaleRGA;
 
-typedef struct RGAFrameContext {
+static void rga_release_buffer(void *opaque, uint8_t *data) {
+    AVBufferRef *frame_group_ref = opaque;
+    MppBuffer *bufferp = (MppBuffer*)data;
+    MppBuffer buffer = *bufferp;
+    mpp_buffer_put(buffer);
+    av_free(bufferp);
+    av_buffer_unref(&frame_group_ref);
+}
+
+static int ff_mpp_create_buffer(ScaleRGA *filter, int size, AVBufferRef **out) {
+    int err;
     AVBufferRef *frame_group_ref;
-    MppBuffer buffer;
-} RGAFrameContext;
+    MppBuffer buffer = NULL;
+    MppBuffer *bufferp = NULL;
+
+    frame_group_ref = av_buffer_ref(filter->frame_group_ref);
+    if (!frame_group_ref) {
+        return AVERROR(ENOMEM);
+    }
+    bufferp = av_mallocz(sizeof(MppBuffer));
+    if (!bufferp) {
+        err = AVERROR(ENOMEM);
+        goto fail;
+    }
+    err = mpp_buffer_get(filter->frame_group, &buffer, size);
+    if (err) {
+        err = AVERROR(ENOMEM);
+        goto fail;
+    }
+    *bufferp = buffer;
+    *out = av_buffer_create((uint8_t *)bufferp, sizeof(MppBuffer), rga_release_buffer,
+                                       frame_group_ref, AV_BUFFER_FLAG_READONLY);
+    if (!*out) {
+        err = AVERROR(ENOMEM);
+        goto fail;
+    }
+    return 0;
+
+fail:
+    if (bufferp)
+        av_free(bufferp);
+    if (buffer)
+        mpp_buffer_put(buffer);
+    av_buffer_unref(&frame_group_ref);
+    return err;
+}
+
+static void rga_release_frame(void *opaque, uint8_t *data)
+{
+    AVDRMFrameDescriptor *desc = (AVDRMFrameDescriptor *)data;
+    AVBufferRef *buffer_ref = (AVBufferRef *)opaque;
+    av_free(desc);
+    av_buffer_unref(&buffer_ref);
+}
 
 static int ff_rga_vpp_config_output(AVFilterLink *outlink)
 {
@@ -69,6 +117,10 @@ static int ff_rga_vpp_config_output(AVFilterLink *outlink)
     AVFilterLink *inlink   = avctx->inputs[0];
     ScaleRGAContext *ctx   = avctx->priv;
     ScaleRGA *filter = (ScaleRGA *)ctx->filter_ref->data;
+    int linesizes[4];
+    MppBuffer buffer;
+    AVBufferRef *buffer_ref = NULL;
+    AVHWFramesContext *output_frames;
     int err;
 
     filter->color_space_mode = 0;
@@ -82,34 +134,60 @@ static int ff_rga_vpp_config_output(AVFilterLink *outlink)
     }
 
     if (!inlink->hw_frames_ctx) {
+        err = av_image_fill_linesizes(linesizes, filter->in_fmt->av, FFALIGN(inlink->w, 2));
+        if (err) {
+            av_log(ctx, AV_LOG_ERROR, "get linesize of %s failed %d\n", av_get_pix_fmt_name(filter->in_fmt->av), err);
+            return err;
+        }
         if (!(filter->sw_frame = av_frame_alloc())) {
+            return AVERROR(ENOMEM);
+        }
+        filter->sw_frame->hw_frames_ctx = av_hwframe_ctx_alloc(avctx->hw_device_ctx);
+        if (!filter->sw_frame->hw_frames_ctx) {
+            av_log(ctx, AV_LOG_ERROR, "Failed to create HW frame context "
+                "for upload.\n");
             err = AVERROR(ENOMEM);
             goto fail;
         }
 
-        filter->sw_frame->format = inlink->format;
-        filter->sw_frame->width  = FFALIGN(inlink->w, 2);
-        filter->sw_frame->height = FFALIGN(inlink->h, 2);
-#ifdef RGA_SW_USE_IMAGE_ALLOC
-        if ((err = av_image_alloc(filter->sw_frame->data, filter->sw_frame->linesize, 
-            filter->sw_frame->width, filter->sw_frame->height, inlink->format, 32)) < 0)
-            goto fail;
-#else
-        if ((err = av_frame_get_buffer(filter->sw_frame, 0)) < 0)
-            goto fail;
+        output_frames = (AVHWFramesContext*)filter->sw_frame->hw_frames_ctx->data;
 
-        /* avoid plane padding */
-        if ((err = av_image_fill_pointers(filter->sw_frame->data, filter->sw_frame->format, 
-                    FFALIGN(filter->sw_frame->height, 32),
-                    filter->sw_frame->buf[0]->data, filter->sw_frame->linesize)) < 0)
+        output_frames->format    = AV_PIX_FMT_DRM_PRIME;
+        output_frames->sw_format = filter->in_fmt->av;
+        output_frames->width     = FFALIGN(inlink->w, 2);
+        output_frames->height    = FFALIGN(inlink->h, 2);
+
+        err = av_hwframe_ctx_init(filter->sw_frame->hw_frames_ctx);
+        if (err < 0) {
+            av_log(ctx, AV_LOG_ERROR, "Failed to initialise RGA frame "
+                "context for upload: %d\n", err);
             goto fail;
-#endif
+        }
+
+        err = ff_mpp_create_buffer(filter, 
+            output_frames->width * output_frames->height * get_bpp_from_rga_format(filter->in_fmt->rga),
+            &buffer_ref);
+        if (err) {
+            av_log(ctx, AV_LOG_ERROR, "Failed to create mpp buffer for upload ret %d\n", err);
+            goto fail;
+        }
+        buffer = *(MppBuffer*)buffer_ref->data;
+
+        filter->sw_frame->width  = inlink->w >> 1 << 1;
+        filter->sw_frame->height = inlink->h >> 1 << 1;
+        err = rkmpp_map_frame(filter->sw_frame, filter->in_fmt, 
+            mpp_buffer_get_fd(buffer), mpp_buffer_get_size(buffer),
+            linesizes[0], output_frames->height,
+            rga_release_frame, buffer_ref);
+        if (err)
+            goto fail;
 
     }
 
     return 0;
 
 fail:
+    av_buffer_unref(&buffer_ref);
     av_frame_free(&filter->sw_frame);
     return err;
 }
@@ -140,7 +218,6 @@ int avrkmpp_scale_rga_config_input(AVFilterLink *inlink)
     rect->height = ctx->height >> 1 << 1;
     av_log(ctx, AV_LOG_DEBUG, "Final output video size w:%d h:%d\n", rect->width, rect->height);
 
-    // wstride = width * (bit_depth >> 3), but we always use YUV420P, bit_depth=8
     rect->wstride = FFALIGN(rect->width, 16);
     rect->hstride = rect->height;
     rect->xoffset = 0;
@@ -174,8 +251,6 @@ int avrkmpp_scale_rga_config_output(AVFilterLink *outlink)
     outlink->h = rect->height;
     outlink->format = AV_PIX_FMT_DRM_PRIME;
 
-    av_buffer_unref(&filter->hwframes_ref);
-
     av_log(ctx, AV_LOG_VERBOSE, "%s, %dx%d => %s, %dx%d\n",
         filter->in_fmt->av == AV_PIX_FMT_YUV420SPRK10 ? "yuv420sp10rk" : av_get_pix_fmt_name(filter->in_fmt->av),
         inlink->w, inlink->h,
@@ -186,6 +261,7 @@ int avrkmpp_scale_rga_config_output(AVFilterLink *outlink)
             filter->in_fmt == filter->out_fmt) {
         av_log(ctx, AV_LOG_VERBOSE, "Passthrough frames.\n");
         filter->passthrough = 1;
+        av_buffer_unref(&outlink->hw_frames_ctx);
         outlink->hw_frames_ctx = av_buffer_ref(inlink->hw_frames_ctx);
         if (!outlink->hw_frames_ctx)
             return AVERROR(ENOMEM);
@@ -197,17 +273,6 @@ int avrkmpp_scale_rga_config_output(AVFilterLink *outlink)
     return 0;
 }
 
-static void rga_release_frame(void *opaque, uint8_t *data)
-{
-    AVDRMFrameDescriptor *desc = (AVDRMFrameDescriptor *)data;
-    RGAFrameContext *framecontext = (RGAFrameContext *)opaque;
-    MppBuffer buffer = framecontext->buffer;
-    av_free(desc);
-    mpp_buffer_put(buffer);
-    av_buffer_unref(&framecontext->frame_group_ref);
-    av_free(framecontext);
-}
-
 int avrkmpp_scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame, AVFrame **output_frame0)
 {
 
@@ -217,12 +282,11 @@ int avrkmpp_scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame, A
     ScaleRGA *filter = (ScaleRGA *)ctx->filter_ref->data;
     rga_rect_t *rect = &filter->output;
     AVFrame *output_frame    = NULL;
+    AVFrame *hw_frame = NULL;
     int err;
     MppBuffer buffer = NULL;
-    AVDRMFrameDescriptor *desc;
-    AVDRMLayerDescriptor *layer;
-    AVBufferRef *frame_group_ref;
-    RGAFrameContext *framecontext = NULL;
+    int pitch0;
+    AVBufferRef *buffer_ref = NULL;
     rga_info_t src_info = {0};
     rga_info_t dst_info = {0};
 
@@ -232,57 +296,50 @@ int avrkmpp_scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame, A
     }
 
     if (inlink->hw_frames_ctx) {
-        desc = (AVDRMFrameDescriptor*)input_frame->data[0];
-        layer = &desc->layers[0];
-        rga_set_rect(&src_info.rect, 0, 0, input_frame->width >> 1 << 1, input_frame->height >> 1 << 1,
-            (int)(get_ppb_plane0_from_rga_format(filter->in_fmt->rga) * layer->planes[0].pitch),
-            layer->nb_planes > 1?(layer->planes[1].offset / layer->planes[0].pitch):input_frame->height,
-            filter->in_fmt->rga);
-        src_info.fd = desc->objects[0].fd;
+        hw_frame = input_frame;
     } else {
-        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(input_frame->format);
+        const AVPixFmtDescriptor *pixdesc = av_pix_fmt_desc_get(input_frame->format);
         char *src_y = input_frame->data[0];
         char *src_u = input_frame->data[1];
         int y_pitch = input_frame->width;
         int src_height = input_frame->height;
-        if (desc->flags & AV_PIX_FMT_FLAG_PLANAR) {
+        if (pixdesc->flags & AV_PIX_FMT_FLAG_PLANAR) {
             y_pitch = input_frame->linesize[0];
             src_height = (src_u - src_y) / y_pitch;
         }
         if (src_height < 0 || (src_height & 1) || (src_height>>1 > input_frame->height) || (y_pitch & 1)) {
             // RGA only supports continuous memory, and aligned to 2
-            src_y = filter->sw_frame->data[0];
-            src_u = filter->sw_frame->data[1];
-            y_pitch = filter->sw_frame->width;
-            src_height = filter->sw_frame->height;
-            if (desc->flags & AV_PIX_FMT_FLAG_PLANAR) {
-                y_pitch = filter->sw_frame->linesize[0];
-                src_height = (src_u - src_y) / y_pitch;
-            }
-
             if ((err = av_frame_copy(filter->sw_frame, input_frame)) < 0)
                 goto fail;
 
             if ((err = av_frame_copy_props(filter->sw_frame, input_frame)) < 0)
                 goto fail;
+
+            hw_frame = filter->sw_frame;
+        } else {
+            src_info.virAddr = src_y;
+            rga_set_rect(&src_info.rect, 0, 0, input_frame->width >> 1 << 1, input_frame->height >> 1 << 1,
+                y_pitch, src_height, filter->in_fmt->rga);
         }
-        src_info.virAddr = src_y;
-        rga_set_rect(&src_info.rect, 0, 0, input_frame->width >> 1 << 1, input_frame->height >> 1 << 1,
-            y_pitch, src_height, filter->in_fmt->rga);
+    }
+    if (hw_frame) {
+        AVHWFramesContext *hwfctx = (AVHWFramesContext*)hw_frame->hw_frames_ctx->data;
+        AVDRMFrameDescriptor *desc = (AVDRMFrameDescriptor*)hw_frame->data[0];
+        rga_set_rect(&src_info.rect, 0, 0, hw_frame->width >> 1 << 1, hw_frame->height >> 1 << 1,
+            hwfctx->width,
+            hwfctx->height,
+            filter->in_fmt->rga);
+        src_info.fd = desc->objects[0].fd;
+        src_info.virAddr = NULL;
     }
     src_info.mmuFlag = 1;
 
-    frame_group_ref = av_buffer_ref(filter->frame_group_ref);
-    if (!frame_group_ref) {
-        err = AVERROR(ENOMEM);
-        goto fail;
-    }
-    err = mpp_buffer_get(filter->frame_group, &buffer, rect->size);
+    err = ff_mpp_create_buffer(filter, rect->size, &buffer_ref);
     if (err) {
-        av_log(ctx, AV_LOG_ERROR, "Failed to get buffer for input frame ret %d\n", err);
-        err = AVERROR(ENOMEM);
+        av_log(ctx, AV_LOG_ERROR, "Failed to create mpp buffer for output ret %d\n", err);
         goto fail;
     }
+    buffer = *(MppBuffer*)buffer_ref->data;
     dst_info.fd = mpp_buffer_get_fd(buffer);
     dst_info.mmuFlag = 1;
     memcpy(&dst_info.rect, rect, sizeof(rga_rect_t));
@@ -294,55 +351,20 @@ int avrkmpp_scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame, A
         goto fail;
     }
 
-    desc = av_mallocz(sizeof(AVDRMFrameDescriptor));
-    if (!desc) {
-        err = AVERROR(ENOMEM);
-        goto fail;
-    }
-
-    desc->nb_objects = 1;
-    desc->objects[0].fd = mpp_buffer_get_fd(buffer);
-    desc->objects[0].size = mpp_buffer_get_size(buffer);
-
-    desc->nb_layers = 1;
-    layer = &desc->layers[0];
-    layer->format = filter->out_fmt->drm;
-    layer->planes[0].object_index = 0;
-    layer->planes[0].offset = 0;
-    layer->planes[0].pitch = rect->wstride;
+    pitch0 = rect->wstride;
 
     switch (filter->out_fmt->rga)
     {
     case RK_FORMAT_YCbCr_420_SP_10B:
-        layer->planes[0].pitch = layer->planes[0].pitch * 10 / 8;
-        // fallthrough
     case RK_FORMAT_YCbCr_420_SP:
     case RK_FORMAT_YCbCr_422_SP:
     case RK_FORMAT_YCbCr_420_P:
     case RK_FORMAT_YCbCr_422_P:
-        layer->nb_planes = 2;
         break;
     default:
-        layer->planes[0].pitch = ceil(get_bpp_from_rga_format(filter->out_fmt->rga) * layer->planes[0].pitch);
-        layer->nb_planes = 1;
+        pitch0 = ceil(get_bpp_from_rga_format(filter->out_fmt->rga) * pitch0);
         break;
     }
-
-    if (layer->nb_planes > 1) {
-        layer->planes[1].object_index = 0;
-        layer->planes[1].offset = layer->planes[0].pitch * rect->hstride;
-        layer->planes[1].pitch = layer->planes[0].pitch;
-    }
-
-    // frame group needs to be closed only when all frames have been released.
-    framecontext = (RGAFrameContext *)av_mallocz(sizeof(RGAFrameContext));
-
-    if (!framecontext) {
-        err = AVERROR(ENOMEM);
-        goto fail;
-    }
-    framecontext->frame_group_ref = frame_group_ref;
-    framecontext->buffer = buffer;
 
     output_frame = av_frame_alloc();
     if (!output_frame) {
@@ -362,18 +384,15 @@ int avrkmpp_scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame, A
     }
 
     // setup general frame fields
-    output_frame->format           = AV_PIX_FMT_DRM_PRIME;
     output_frame->width            = rect->width;
     output_frame->height           = rect->height;
 
-    output_frame->data[0]  = (uint8_t *)desc;
-    output_frame->buf[0]   = av_buffer_create((uint8_t *)desc, sizeof(*desc), rga_release_frame,
-                                       framecontext, AV_BUFFER_FLAG_READONLY);
+    err = rkmpp_map_frame(output_frame, filter->out_fmt, dst_info.fd, rect->size,
+        pitch0, rect->hstride,
+        rga_release_frame, buffer_ref);
 
-    if (!output_frame->buf[0]) {
-        err = AVERROR(ENOMEM);
+    if (err)
         goto fail;
-    }
 
     output_frame->hw_frames_ctx = av_buffer_ref(outlink->hw_frames_ctx);
     if (!output_frame->hw_frames_ctx) {
@@ -387,13 +406,8 @@ int avrkmpp_scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame, A
     return 0;
 
 fail:
+    av_buffer_unref(&buffer_ref);
     av_frame_free(&output_frame);
-    if (framecontext)
-        av_free(framecontext);
-    av_free(desc);
-    mpp_buffer_put(buffer);
-    if (frame_group_ref)
-        av_buffer_unref(&frame_group_ref);
     av_frame_free(&input_frame);
     return err;
 }
@@ -409,9 +423,6 @@ static av_cold void rkmpp_release_filter(void *opaque, uint8_t *data)
     ScaleRGA *filter = (ScaleRGA *)data;
 
     if (filter->sw_frame) {
-#ifdef RGA_SW_USE_IMAGE_ALLOC
-        av_freep(&filter->sw_frame->data[0]);
-#endif
         av_frame_free(&filter->sw_frame);
     }
     av_buffer_unref(&filter->frame_group_ref);

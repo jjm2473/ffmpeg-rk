@@ -54,7 +54,7 @@ static int ff_rga_config_hdr2sdr(RgaSURF_FORMAT in, RgaSURF_FORMAT out) {
         case RK_FORMAT_YCrCb_420_SP_10B:
         case RK_FORMAT_YCbCr_422_10b_SP:
         case RK_FORMAT_YCrCb_422_10b_SP:
-            return yuv2yuv_709_full_2_601_limit;
+            return yuv2yuv_709_full_2_601_full;
             break;
         default:
             return 0;
@@ -120,6 +120,7 @@ static float get_bpp_from_rga_format(RgaSURF_FORMAT rga_fmt) {
     }
 }
 
+#if 0
 static float get_ppb_plane0_from_rga_format(RgaSURF_FORMAT rga_fmt) {
     switch(rga_fmt) {
         case RK_FORMAT_YCbCr_400:
@@ -176,5 +177,6 @@ static float get_ppb_plane0_from_rga_format(RgaSURF_FORMAT rga_fmt) {
             return 1.0;
     }
 }
+#endif
 
 #endif /* AVRKMPP_RKRGA_H */
