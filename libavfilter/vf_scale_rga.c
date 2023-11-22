@@ -16,6 +16,7 @@ static int scale_rga_query_formats(AVFilterContext *avctx) {
     enum AVPixelFormat input_pix_fmts[] = {
         AV_PIX_FMT_DRM_PRIME,
         AV_PIX_FMT_YUV420P,
+        AV_PIX_FMT_YUV422P,
         AV_PIX_FMT_NV12,
         // AV_PIX_FMT_P010,
         AV_PIX_FMT_NV16,
@@ -34,6 +35,8 @@ static int scale_rga_query_formats(AVFilterContext *avctx) {
         AV_PIX_FMT_RGB565,
         AV_PIX_FMT_BGR565,
         AV_PIX_FMT_GRAY8,
+        AV_PIX_FMT_YUVJ420P,
+        AV_PIX_FMT_YUVJ422P,
         AV_PIX_FMT_NONE,
     };
     enum AVPixelFormat output_pix_fmts[] = {

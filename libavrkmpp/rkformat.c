@@ -6,7 +6,7 @@
 #define DRM_FORMAT_NV15 fourcc_code('N', 'A', '1', '2')
 #endif
 
-#define RK_FORMAT_NR 20
+#define RK_FORMAT_NR 22
 
 // librga/core/utils/drm_utils/src/drm_utils.cpp drm_fourcc_table
 // rkmpp/mpp/vproc/rga/rga.cpp rga_fmt_map
@@ -31,6 +31,8 @@ static const rkformat rkformats[RK_FORMAT_NR+1] = {
         { .av = AV_PIX_FMT_ABGR,    .mpp = MPP_FMT_RGBA8888,        .drm = DRM_FORMAT_ABGR8888, .rga = RK_FORMAT_RGBA_8888},
         { .av = AV_PIX_FMT_0BGR,    .mpp = MPP_FMT_RGBA8888,        .drm = DRM_FORMAT_XBGR8888, .rga = RK_FORMAT_RGBX_8888},
         { .av = AV_PIX_FMT_GRAY8,   .mpp = MPP_FMT_YUV400,          .drm = DRM_FORMAT_YUV420_8BIT, .rga = RK_FORMAT_YCbCr_400},
+        { .av = AV_PIX_FMT_YUVJ420P,.mpp = MPP_FMT_YUV420P,         .drm = DRM_FORMAT_YUV420,   .rga = RK_FORMAT_YCbCr_420_P},
+        { .av = AV_PIX_FMT_YUVJ422P,.mpp = MPP_FMT_YUV422P,         .drm = DRM_FORMAT_YUV422,   .rga = RK_FORMAT_YCbCr_422_P},
         { .av = AV_PIX_FMT_NONE,    .mpp = MPP_FMT_BUTT,            .drm = DRM_FORMAT_INVALID,  .rga = RK_FORMAT_UNKNOWN} // sentinel
 };
 

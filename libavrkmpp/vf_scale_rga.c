@@ -123,16 +123,6 @@ static int ff_rga_vpp_config_output(AVFilterLink *outlink)
     AVHWFramesContext *output_frames;
     int err;
 
-    filter->color_space_mode = 0;
-    if (ctx->hdr2sdr) {
-        filter->color_space_mode = ff_rga_config_hdr2sdr(filter->in_fmt->rga, filter->out_fmt->rga);
-        if (filter->color_space_mode) {
-            av_log(ctx, AV_LOG_VERBOSE, "HDR to SDR mode %x\n", filter->color_space_mode);
-        } else {
-            av_log(ctx, AV_LOG_VERBOSE, "Unsupported or does not require HDR to SDR conversion\n");
-        }
-    }
-
     if (!inlink->hw_frames_ctx) {
         err = av_image_fill_linesizes(linesizes, filter->in_fmt->av, FFALIGN(inlink->w, 2));
         if (err) {
@@ -256,9 +246,19 @@ int avrkmpp_scale_rga_config_output(AVFilterLink *outlink)
         inlink->w, inlink->h,
         av_get_pix_fmt_name(filter->out_fmt->av), outlink->w, outlink->h);
 
+    filter->color_space_mode = 0;
+    if (ctx->hdr2sdr) {
+        filter->color_space_mode = ff_rga_config_hdr2sdr(filter->in_fmt->rga, filter->out_fmt->rga);
+        if (filter->color_space_mode) {
+            av_log(ctx, AV_LOG_VERBOSE, "HDR to SDR mode %x\n", filter->color_space_mode);
+        } else {
+            av_log(ctx, AV_LOG_VERBOSE, "Unsupported or does not require HDR to SDR conversion\n");
+        }
+    }
+
     filter->passthrough = 0;
     if (inlink->hw_frames_ctx && outlink->w == inlink->w && outlink->h == inlink->h &&
-            filter->in_fmt == filter->out_fmt) {
+            filter->in_fmt->rga == filter->out_fmt->rga && !filter->color_space_mode) {
         av_log(ctx, AV_LOG_VERBOSE, "Passthrough frames.\n");
         filter->passthrough = 1;
         av_buffer_unref(&outlink->hw_frames_ctx);
@@ -309,7 +309,7 @@ int avrkmpp_scale_rga_filter_frame(AVFilterLink *inlink, AVFrame *input_frame, A
         }
         if (src_height < 0 || (src_height & 1) || (src_height>>1 > input_frame->height) || (y_pitch & 1)) {
             // RGA only supports continuous memory, and aligned to 2
-            if ((err = av_frame_copy(filter->sw_frame, input_frame)) < 0)
+            if ((err = av_hwframe_transfer_data(filter->sw_frame, input_frame, 0)) < 0)
                 goto fail;
 
             if ((err = av_frame_copy_props(filter->sw_frame, input_frame)) < 0)
