@@ -18,6 +18,7 @@ static MppCodingType rkmpp_get_codingtype(enum AVCodecID codec)
     case AV_CODEC_ID_MPEG1VIDEO:    /* fallthrough */
     case AV_CODEC_ID_MPEG2VIDEO:    return MPP_VIDEO_CodingMPEG2;
     case AV_CODEC_ID_MPEG4:         return MPP_VIDEO_CodingMPEG4;
+    case AV_CODEC_ID_MJPEG:         return MPP_VIDEO_CodingMJPEG;
     default:                        return MPP_VIDEO_CodingUnused;
     }
 }

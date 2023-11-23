@@ -35,6 +35,7 @@
 #include "codec_internal.h"
 
 /* RKMPP */
+extern const FFCodec ff_mjpeg_rkmpp_decoder;
 extern const FFCodec ff_mpeg4_rkmpp_decoder;
 extern const FFCodec ff_mpeg1_rkmpp_decoder;
 extern const FFCodec ff_mpeg2_rkmpp_decoder;
