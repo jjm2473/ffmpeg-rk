@@ -251,6 +251,7 @@ static int conv_opts(int argc, const char **argv, const char* nargv[]) {
 
 int main(int argc, const char **argv)
 {
+    const char **p;
     const char* nargv[128];
     int pargc = 0;
     int nargc = conv_opts(argc, argv, nargv);
@@ -260,7 +261,7 @@ int main(int argc, const char **argv)
         nargv[MAX_MPP_DEC_ARGC - pargc] = "ffmpeg";
         argv = nargv+(MAX_MPP_DEC_ARGC - pargc);
     }
-    const char **p = argv;
+    p = argv;
     fprintf(stderr, "\n%s", *p);
     for (++p; *p != NULL; ++p) {
         fprintf(stderr, " \"%s\"", *p);
@@ -269,6 +270,6 @@ int main(int argc, const char **argv)
 #ifndef HAVE_AV_CONFIG_H
     return 0;
 #else
-    return execvp("ffmpeg.mpp", argv);
+    return execvp("ffmpeg.mpp", (char **)argv);
 #endif
 }
